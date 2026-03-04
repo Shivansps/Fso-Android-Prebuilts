@@ -1,8 +1,8 @@
 #!/bin/sh
-export ANDROID_NDK_HOME=/home/shivan/android-ndk-r28c
-export ANDROID_PLATFORM=android-28
-export PREBUILT_FOLDER=/home/shivan/prebuilt_android
-export TEMP_FOLDER=fso_android
+#export ANDROID_NDK_HOME=/home/shivan/android-ndk-r28c
+#export ANDROID_PLATFORM=android-28
+#export PREBUILT_FOLDER=/home/shivan/prebuilt_android
+#export TEMP_FOLDER=fso_android
 
 rm -rf $TEMP_FOLDER && mkdir $TEMP_FOLDER && cd $TEMP_FOLDER
 
