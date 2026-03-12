@@ -1,6 +1,6 @@
 #!/bin/sh
 #export ANDROID_SDK_HOME=/home/shivan/AndroidSDK
-#export ANDROID_NDK_HOME=/home/shivan/android-ndk-r27d
+#export ANDROID_NDK_HOME=/home/shivan/android-ndk-r28c
 #export ANDROID_PLATFORM=android-28
 #export TARGET_PREBUILT_FOLDER=/home/shivan/prebuilt_android
 #export TEMP_FOLDER=libs
@@ -10,6 +10,100 @@ rm -rf $TEMP_FOLDER
 rm -rf $TARGET_PREBUILT_FOLDER
 mkdir $TARGET_PREBUILT_FOLDER
 mkdir $TEMP_FOLDER && cd $TEMP_FOLDER
+
+# ShaderC
+rm -rf shaderc
+
+git clone https://github.com/google/shaderc.git
+cd shaderc
+./utils/git-sync-deps
+
+mkdir arm64-v8a && mkdir armeabi-v7a && mkdir x86 && mkdir x86_64
+
+cd arm64-v8a
+
+cmake -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a \
+  -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DSHADERC_SKIP_TESTS=ON \
+  -DANDROID_STL=c++_static \
+  ..
+
+ninja
+
+mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
+cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib/libshaderc.so
+cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
+cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
+cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
+
+cd ..
+cd armeabi-v7a
+
+cmake -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=armeabi-v7a \
+  -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DSHADERC_SKIP_TESTS=ON \
+  -DANDROID_STL=c++_static \
+  ..
+
+ninja
+
+mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
+cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib/libshaderc.so
+cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
+cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
+cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
+
+cd ..
+cd x86
+
+cmake -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=x86 \
+  -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DSHADERC_SKIP_TESTS=ON \
+  -DANDROID_STL=c++_static \
+  ..
+
+ninja
+
+mkdir -p $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
+cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib/libshaderc.so
+cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
+cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
+cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
+
+cd ..
+cd x86_64
+
+cmake -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=x86_64 \
+  -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_SHARED_LIBS=ON \
+  -DSHADERC_SKIP_TESTS=ON \
+  -DANDROID_STL=c++_static \
+  ..
+
+ninja
+
+mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
+cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib/libshaderc.so
+cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
+cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
+cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
+
+cd .. && cd ..
 
 # FFMPEG
 git clone https://github.com/Javernaut/ffmpeg-android-maker
