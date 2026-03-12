@@ -12,8 +12,7 @@ mkdir $TARGET_PREBUILT_FOLDER
 mkdir $TEMP_FOLDER && cd $TEMP_FOLDER
 
 # ShaderC
-rm -rf shaderc
-
+ANDROID_NDK_STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
 git clone https://github.com/google/shaderc.git
 cd shaderc
 ./utils/git-sync-deps
@@ -25,20 +24,18 @@ cd arm64-v8a
 cmake -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a \
-  -DANDROID_PLATFORM=android-28 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=ON \
+  -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
+  -DBUILD_SHARED_LIBS=OFF \
   -DSHADERC_SKIP_TESTS=ON \
   -DANDROID_STL=c++_static \
   ..
 
 ninja
 
+"$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
-cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib/libshaderc.so
-cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
-cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
-cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/arm64-v8a/shaderc/lib/libshaderc.so
 
 cd ..
 cd armeabi-v7a
@@ -46,20 +43,18 @@ cd armeabi-v7a
 cmake -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=armeabi-v7a \
-  -DANDROID_PLATFORM=android-28 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=ON \
+  -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
+  -DBUILD_SHARED_LIBS=OFF \
   -DSHADERC_SKIP_TESTS=ON \
   -DANDROID_STL=c++_static \
   ..
 
 ninja
 
+"$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
-cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib/libshaderc.so
-cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
-cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
-cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/armeabi-v7a/shaderc/lib/libshaderc.so
 
 cd ..
 cd x86
@@ -67,20 +62,18 @@ cd x86
 cmake -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=x86 \
-  -DANDROID_PLATFORM=android-28 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=ON \
+  -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
+  -DBUILD_SHARED_LIBS=OFF \
   -DSHADERC_SKIP_TESTS=ON \
   -DANDROID_STL=c++_static \
   ..
 
 ninja
 
+"$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
-cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib/libshaderc.so
-cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
-cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
-cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86/shaderc/lib/libshaderc.so
 
 cd ..
 cd x86_64
@@ -88,20 +81,18 @@ cd x86_64
 cmake -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=x86_64 \
-  -DANDROID_PLATFORM=android-28 \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=ON \
+  -DANDROID_PLATFORM=$ANDROID_PLATFORM \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
+  -DBUILD_SHARED_LIBS=OFF \
   -DSHADERC_SKIP_TESTS=ON \
   -DANDROID_STL=c++_static \
   ..
 
 ninja
 
+"$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
-cp -r libshaderc/libshaderc_shared.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib/libshaderc.so
-cp -r third_party/glslang/glslang/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
-cp -r third_party/glslang/SPIRV/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
-cp -r third_party/spirv-tools/source/*.so $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86_64/shaderc/lib/libshaderc.so
 
 cd .. && cd ..
 
