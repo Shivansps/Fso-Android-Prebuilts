@@ -1,7 +1,4 @@
 #!/bin/sh
-
-#export ANDROID_SDK_HOME=/home/shivan/AndroidSDK
-
 # Resolve the directory where this script lives (absolute path).
 # This is important so that $ANDROID_NDK_HOME is absolute and resolves
 # correctly from the deep cmake build subdirectories below.
@@ -10,10 +7,68 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 export ANDROID_PLATFORM=android-28
 export TARGET_PREBUILT_FOLDER="$SCRIPT_DIR/prebuilt_android"
 export TEMP_FOLDER="$TARGET_PREBUILT_FOLDER/libs_temp"
-export ANDROID_NDK_HOME="$TARGET_PREBUILT_FOLDER/android-ndk"
+# Honor a pre-installed NDK (e.g. baked into a Docker image) via $ANDROID_NDK_HOME.
+# When unset, default to a location inside the (wiped) prebuilt folder.
+export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$TARGET_PREBUILT_FOLDER/android-ndk}"
 
+#############################################################################################################
+# --- Android SDK = cmdline-tools + sdkmanager ---
+#############################################################################################################
+# Honor a pre-installed SDK via $ANDROID_SDK_HOME (default: inside prebuilt folder).
+export ANDROID_SDK_HOME="${ANDROID_SDK_HOME:-$TARGET_PREBUILT_FOLDER/android-sdk}"
 
+# Skip SDK setup if a usable SDK is already present (e.g. baked into a Docker image
+# at $ANDROID_SDK_HOME, outside $TARGET_PREBUILT_FOLDER so it survives the rm below).
+if [ -x "$ANDROID_SDK_HOME/cmdline-tools/latest/bin/sdkmanager" ] && [ -f "$ANDROID_SDK_HOME/platforms/android-35/android.jar" ]; then
+    echo "Using pre-installed SDK at $ANDROID_SDK_HOME (skipping cmdline-tools/sdkmanager)"
+else
+CMDLINE_FALLBACK_URL="https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip"
+CMDLINE_ZIP="$SCRIPT_DIR/commandlinetools-linux.zip"
+
+CMDLINE_URL=$(curl -fsSL https://developer.android.com/studio 2>/dev/null \
+  | grep -o "https://dl.google.com/android/repository/commandlinetools-linux-[0-9]*_latest.zip" \
+  | head -n 1)
+[ -n "$CMDLINE_URL" ] || CMDLINE_URL="$CMDLINE_FALLBACK_URL"
+
+if [ ! -f "$CMDLINE_ZIP" ]; then
+    echo "Downloading Android cmdline-tools from $CMDLINE_URL ..."
+    if command -v curl >/dev/null 2>&1; then
+        curl -L --fail -o "$CMDLINE_ZIP" "$CMDLINE_URL"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$CMDLINE_ZIP" "$CMDLINE_URL"
+    else
+        echo "Error: neither 'curl' nor 'wget' is available." >&2
+        exit 1
+    fi
+fi
+
+# Extract sdkmanager expects: <sdk-root>/cmdline-tools/latest/
+echo "Setting up cmdline-tools in $ANDROID_SDK_HOME ..."
+rm -rf "$ANDROID_SDK_HOME/cmdline-tools"
+mkdir -p "$ANDROID_SDK_HOME/cmdline-tools"
+CMDLINE_TMP="$TARGET_PREBUILT_FOLDER/cmdline_extract"
+rm -rf "$CMDLINE_TMP" && mkdir -p "$CMDLINE_TMP"
+unzip -q "$CMDLINE_ZIP" -d "$CMDLINE_TMP"
+mv "$CMDLINE_TMP/cmdline-tools" "$ANDROID_SDK_HOME/cmdline-tools/latest"
+rm -rf "$CMDLINE_TMP"
+
+SDKMANAGER="$ANDROID_SDK_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+# Needs JDK on PATH (java 17+). Early check :
+command -v java >/dev/null 2>&1 || { echo "Error: JDK (java 17+) is needed for sdkmanager." >&2; exit 1; }
+
+# Accept licenses and install platform 35 + build-tools 35
+yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_HOME" --licenses >/dev/null
+"$SDKMANAGER" --sdk_root="$ANDROID_SDK_HOME" "platforms;android-35" "build-tools;35.0.0"
+
+# Sanity check
+[ -f "$ANDROID_SDK_HOME/platforms/android-35/android.jar" ] || { echo "Error: android-35 not installed." >&2; exit 1; }
+echo "SDK ready on $ANDROID_SDK_HOME (platforms/android-35, build-tools/35.0.0)"
+fi  # end: SDK setup (skipped when pre-baked)
+
+######################################################################################################################
 # --- Android NDK r29 download settings ---
+######################################################################################################################
 NDK_URL="https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
 NDK_ZIP="$SCRIPT_DIR/android-ndk-r29-linux.zip"   # kept next to the script (survives rm of $TEMP_FOLDER)
 NDK_SHA1="87e2bb7e9be5d6a1c6cdf5ec40dd4e0c6d07c30b"
@@ -22,6 +77,15 @@ rm -rf "$TEMP_FOLDER" && rm -rf "$TARGET_PREBUILT_FOLDER"
 mkdir "$TARGET_PREBUILT_FOLDER" && mkdir "$TEMP_FOLDER"
 cd "$TEMP_FOLDER"
 
+# If a usable NDK is already present (e.g. baked into a Docker image at
+# $ANDROID_NDK_HOME, outside $TARGET_PREBUILT_FOLDER), reuse it and skip download.
+NDK_PREBAKED=0
+if [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
+    NDK_PREBAKED=1
+    echo "Using pre-installed NDK at $ANDROID_NDK_HOME (skipping download/extract)"
+fi
+
+if [ "$NDK_PREBAKED" = "0" ]; then
 # ----------------------------------------------------------------------
 # Get Android NDK R29 (linux x64)
 #   - Download to the same location as this script ($NDK_ZIP).
@@ -78,6 +142,7 @@ if [ -z "$NDK_INNER" ]; then
 fi
 mv "$NDK_INNER" "$ANDROID_NDK_HOME"
 rm -rf "$NDK_EXTRACT_TMP"
+fi  # end: download/extract NDK (skipped when pre-baked)
 
 # Sanity check: the toolchain file must exist.
 if [ ! -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
@@ -86,8 +151,9 @@ if [ ! -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
 fi
 echo "NDK ready at $ANDROID_NDK_HOME"
 
-
+########################################################################################################
 # Build prebuilt libs
+########################################################################################################
 
 # FFMPEG
 git clone https://github.com/Javernaut/ffmpeg-android-maker
@@ -302,7 +368,7 @@ cd ..
 
 # SDL 3
 git clone https://github.com/libsdl-org/SDL SDL3
-cd SDL3 && cd ..
+cd SDL3 && git checkout release-3.4.x && cd ..
 
 mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
 cmake cmake -S SDL3 -B sdl3-android1  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="arm64-v8a" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
@@ -389,7 +455,7 @@ cd .. && cd ..
 # Cleanup + packaging
 cd ..
 rm -rf "$TEMP_FOLDER"
-rm -rf "$ANDROID_NDK_HOME"
+[ "$NDK_PREBAKED" = "1" ] || rm -rf "$ANDROID_NDK_HOME"   # keep a pre-baked NDK
 
 cd "$TARGET_PREBUILT_FOLDER"
 for ABI in arm64-v8a x86_64 armeabi-v7a x86; do

@@ -1,0 +1,87 @@
+# Reproducible build environment for build_libs.sh
+# Builds FFmpeg (n6.1), shaderc, openal-soft+oboe, SDL2, SDL3 and freetype2 for Android.
+#
+# The Android SDK (cmdline-tools), NDK r29 and all the source repos are downloaded
+# BY THE SCRIPT ITSELF, so this image only provides the host build tools.
+#
+# IMPORTANT: must be linux/amd64 — the NDK r29 and cmdline-tools the script downloads
+# are the linux-x86_64 prebuilts.
+#
+#   Build the image:   docker build --platform=linux/amd64 -t android-libs .
+#   Run the build:     docker run --rm --platform=linux/amd64 \
+#                          -v "$PWD/out:/work/prebuilt_android" android-libs
+#   (the .tar.gz packages end up in ./out)
+
+FROM --platform=linux/amd64 ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # --- compiler / generic build toolchain ---
+    build-essential \
+    cmake \
+    ninja-build \
+    make \
+    # --- FFmpeg: x86/x86_64 assembly + configure ---
+    nasm \
+    pkg-config \
+    # --- FFmpeg external libs (only used if you enable --enable-* flags; safe to keep) ---
+    meson \
+    autoconf \
+    automake \
+    libtool \
+    # --- shaderc: utils/git-sync-deps + SPIRV-Tools header generation ---
+    python3 \
+    # --- download / extract / VCS ---
+    git \
+    curl \
+    wget \
+    unzip \
+    xz-utils \
+    ca-certificates \
+    file \
+    # --- JDK 17 required by Android sdkmanager ---
+    openjdk-17-jdk-headless \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Bake the Android NDK r29 into the image -------------------------------
+# Extracted on the image's case-sensitive Linux fs, so there is NO Windows
+# case-collision (xt_RATEEST.h vs xt_rateest.h) and no per-run re-download.
+# The script honors $ANDROID_NDK_HOME and skips its own download when it finds
+# a valid toolchain here.
+ENV ANDROID_NDK_HOME=/opt/android-ndk-r29
+RUN curl -fL -o /tmp/ndk.zip \
+      https://dl.google.com/android/repository/android-ndk-r29-linux.zip \
+ && echo "87e2bb7e9be5d6a1c6cdf5ec40dd4e0c6d07c30b  /tmp/ndk.zip" | sha1sum -c - \
+ && unzip -q /tmp/ndk.zip -d /opt \
+ && rm /tmp/ndk.zip \
+ && test -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+
+# --- Bake the Android SDK (platform-35 + build-tools 35.0.0) ---------------
+# Optional: build_libs.sh sets the SDK up then wipes it and the native builds
+# never actually use it, but baking it here (outside the wiped folder) gives
+# ffmpeg-android-maker a real $ANDROID_SDK_HOME and avoids re-downloading it
+# every run. Needs the JDK installed above.
+ENV ANDROID_SDK_HOME=/opt/android-sdk
+RUN curl -fL -o /tmp/cmdline.zip \
+      https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip \
+ && mkdir -p "$ANDROID_SDK_HOME/cmdline-tools" /tmp/cmdline \
+ && unzip -q /tmp/cmdline.zip -d /tmp/cmdline \
+ && mv /tmp/cmdline/cmdline-tools "$ANDROID_SDK_HOME/cmdline-tools/latest" \
+ && rm -rf /tmp/cmdline /tmp/cmdline.zip \
+ && yes | "$ANDROID_SDK_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$ANDROID_SDK_HOME" --licenses >/dev/null \
+ && "$ANDROID_SDK_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --sdk_root="$ANDROID_SDK_HOME" "platforms;android-35" "build-tools;35.0.0" \
+ && test -f "$ANDROID_SDK_HOME/platforms/android-35/android.jar"
+
+WORKDIR /work
+
+# Bring the build script into the image.
+COPY build_libs.sh /work/build_libs.sh
+RUN chmod +x /work/build_libs.sh
+
+# The script writes everything under $SCRIPT_DIR/prebuilt_android (i.e. /work/prebuilt_android).
+# Mount a volume there to collect the resulting bin-android-*.tar.gz packages.
+CMD ["sh", "/work/build_libs.sh"]

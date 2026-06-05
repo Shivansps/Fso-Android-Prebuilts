@@ -1,0 +1,49 @@
+# Single compose file for the whole repo. Put it at the repo ROOT, next to the
+# two scripts and the docker_libs/ docker_fso/ folders:
+#
+#   repo/
+#   ├─ build_libs.sh
+#   ├─ build_fso_android.sh
+#   ├─ compose.yaml            <-- this file
+#   ├─ docker_libs/Dockerfile
+#   └─ docker_fso/Dockerfile
+#
+# context: .  ->  the repo root (where the scripts are), so each Dockerfile's
+#                 `COPY build_*.sh` resolves correctly.
+# volumes .:/work  ->  bind-mounts the repo root into the container, so:
+#                 * the scripts run from there,
+#                 * android-ndk-r29-linux.zip (and cmdline-tools zip) are cached
+#                   on the host and reused across runs,
+#                 * the .tar.gz outputs appear directly in your repo folder.
+#
+# Commands (run from the repo root):
+#   docker compose build              # build BOTH images
+#   docker compose run --rm libs      # -> ./prebuilt_android/bin-android-*.tar.gz
+#   docker compose run --rm fso       # -> ./fso_android/jniLibs.tar.gz
+#
+# (The two builds are independent: the FSO build downloads its Android prebuilt
+#  libs from the Fso-Android-Prebuilts GitHub release, NOT from ./prebuilt_android,
+#  so you don't have to run `libs` before `fso`.)
+
+services:
+  libs:
+    image: fso_android_prebuilts
+    build:
+      context: .
+      dockerfile: Dockerfile.libs
+    platform: linux/amd64
+    working_dir: /work
+    volumes:
+      - .:/work
+    command: ["sh", "/work/build_libs.sh"]
+
+  fso:
+    image: fso_android
+    build:
+      context: .
+      dockerfile: Dockerfile.fso
+    platform: linux/amd64
+    working_dir: /work
+    volumes:
+      - .:/work
+    command: ["sh", "/work/build_fso_android.sh"]

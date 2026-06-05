@@ -7,7 +7,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 export ANDROID_PLATFORM=android-28
 export TEMP_FOLDER="$SCRIPT_DIR/fso_android"
-export ANDROID_NDK_HOME="$TEMP_FOLDER/android-ndk"
+# Honor a pre-installed NDK (e.g. baked into a Docker image) via $ANDROID_NDK_HOME.
+# When unset, default to a location inside $TEMP_FOLDER (download-on-demand).
+export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$TEMP_FOLDER/android-ndk}"
 
 # --- Android NDK r29 download settings ---
 NDK_URL="https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
@@ -16,6 +18,15 @@ NDK_SHA1="87e2bb7e9be5d6a1c6cdf5ec40dd4e0c6d07c30b"
 
 rm -rf "$TEMP_FOLDER" && mkdir "$TEMP_FOLDER" && cd "$TEMP_FOLDER"
 
+# If a usable NDK is already present (e.g. baked into a Docker image at
+# $ANDROID_NDK_HOME, outside $TEMP_FOLDER), reuse it and skip download/extract.
+NDK_PREBAKED=0
+if [ -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
+    NDK_PREBAKED=1
+    echo "Using pre-installed NDK at $ANDROID_NDK_HOME (skipping download/extract)"
+fi
+
+if [ "$NDK_PREBAKED" = "0" ]; then
 # ----------------------------------------------------------------------
 # Get Android NDK R29 (linux x64)
 #   - Download to the same location as this script ($NDK_ZIP).
@@ -72,6 +83,7 @@ if [ -z "$NDK_INNER" ]; then
 fi
 mv "$NDK_INNER" "$ANDROID_NDK_HOME"
 rm -rf "$NDK_EXTRACT_TMP"
+fi  # end: download/extract NDK (skipped when pre-baked)
 
 # Sanity check: the toolchain file must exist.
 if [ ! -f "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" ]; then
@@ -86,7 +98,7 @@ cd fs2open.github.com && git checkout android-build
 
 # Make embedfile
 mkdir tool && cd tool
-cmake .. -DFSO_BUILD_TOOLS=ON -G Ninja
+cmake .. -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_TOOLS=ON -G Ninja
 ninja embedfile
 
 cd ..
@@ -146,3 +158,16 @@ ninja
 mkdir -p ../../jniLibs/"$TARGET_ABI"
 cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
 cd ..
+
+#####################################
+# Cleanup
+#####################################
+[ "$NDK_PREBAKED" = "1" ] || rm -rf "$ANDROID_NDK_HOME"   # keep a pre-baked NDK
+rm -rf "$TEMP_FOLDER/fs2open.github.com"
+
+
+#####################################
+# Packaging
+#####################################
+echo "Packaging jniLibs"
+tar -czf "$TEMP_FOLDER/jniLibs.tar.gz" -C "$TEMP_FOLDER/jniLibs" .
