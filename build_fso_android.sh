@@ -101,22 +101,22 @@ cd fs2open.github.com && git checkout android-build
 # folder is missing or contains no .patch files, so the build works either way.
 PATCHES_DIR="$SCRIPT_DIR/patchs"
 if [ -d "$PATCHES_DIR" ]; then
-    failed_patches=()
+    failed_patches=""
 
     for patch in "$PATCHES_DIR"/*.patch; do
-        [ -e "$patch" ] || continue   # glob matched nothing -> nothing to apply
+        [ -e "$patch" ] || continue
         echo "Applying patch: $patch"
-        git apply --whitespace=nowarn "$patch" || failed_patches+=("$(basename "$patch")")
+        if ! git apply --whitespace=nowarn "$patch"; then
+            failed_patches="$failed_patches\n  - $(basename "$patch")"
+        fi
     done
 
-    if [ ${#failed_patches[@]} -gt 0 ]; then
+    if [ -n "$failed_patches" ]; then
         echo ""
-        echo "Warning: the following patches failed to apply:" >&2
-        for name in "${failed_patches[@]}"; do
-            echo "  - $name" >&2
-        done
+        printf "Warning: the following patches failed to apply:\n%b\n" "$failed_patches" >&2
         echo ""
-        read -rp "Continue anyway? [y/N]: " answer
+        printf "Continue anyway? [y/N]: "
+        read -r answer
         case "$answer" in
             [yY][eE][sS]|[yY]) echo "Continuing..." ;;
             *) echo "Aborting."; exit 1 ;;
