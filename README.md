@@ -36,7 +36,7 @@ Outputs land in your project folder:
 
 The NDK (and, for `libs`, the SDK) are baked into the images at build time, so the runs don't re-download them. The two builds are independent: `fso` fetches its Android prebuilt libs from the `Fso-Android-Prebuilts` release, not from `prebuilt_android/`, so you don't need to run `libs` first.
 
-> **On Windows:** the Docker path works as-is. The NDK is extracted *inside the image* (a case-sensitive Linux filesystem), so the `xt_RATEEST.h` / `xt_rateest.h` case collision never happens. A **manual** build (below) still needs a case-sensitive filesystem — use Linux or WSL2, and keep the repo on the Linux side (not under `/mnt/c`).
+> **On Windows:** the Docker path works as-is. The NDK is extracted *inside the image* (a case-sensitive Linux filesystem).
 
 ## Applying patches to FSO (optional)
 
@@ -44,7 +44,6 @@ Drop git-style `.patch` files into `patchs/`. `build_fso_android.sh` applies the
 
 - Number them to control order: `0001-…`, `0002-…`, etc.
 - No `.patch` files (or no folder) → nothing happens; the build runs normally.
-- A patch that fails to apply stops the build, so you notice it.
 
 Generate one from a checked-out FSO tree:
 
