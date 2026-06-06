@@ -96,6 +96,34 @@ echo "NDK ready at $ANDROID_NDK_HOME"
 git clone https://github.com/Shivansps/fs2open.github.com --recursive
 cd fs2open.github.com && git checkout android-build
 
+# Apply local patches (optional). Every *.patch in $PATCHES_DIR is applied, in
+# sorted order, to the freshly checked-out FSO tree. This is a no-op when the
+# folder is missing or contains no .patch files, so the build works either way.
+PATCHES_DIR="$SCRIPT_DIR/patchs"
+if [ -d "$PATCHES_DIR" ]; then
+    failed_patches=()
+
+    for patch in "$PATCHES_DIR"/*.patch; do
+        [ -e "$patch" ] || continue   # glob matched nothing -> nothing to apply
+        echo "Applying patch: $patch"
+        git apply --whitespace=nowarn "$patch" || failed_patches+=("$(basename "$patch")")
+    done
+
+    if [ ${#failed_patches[@]} -gt 0 ]; then
+        echo ""
+        echo "Warning: the following patches failed to apply:" >&2
+        for name in "${failed_patches[@]}"; do
+            echo "  - $name" >&2
+        done
+        echo ""
+        read -rp "Continue anyway? [y/N]: " answer
+        case "$answer" in
+            [yY][eE][sS]|[yY]) echo "Continuing..." ;;
+            *) echo "Aborting."; exit 1 ;;
+        esac
+    fi
+fi
+
 # Make embedfile
 mkdir tool && cd tool
 cmake .. -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_TOOLS=ON -G Ninja

@@ -44,6 +44,10 @@ WORKDIR /work
 # project dir (recommended, see compose.fso.yaml) overrides this and lets the
 # downloaded android-ndk-r29-linux.zip persist on the host between runs.
 COPY build_fso_android.sh /work/build_fso_android.sh
+# Bake the local patches too (so a plain `docker run` without a bind mount also
+# has them). The folder must exist in the build context — keep it present (even
+# empty, with a .gitkeep). With the compose bind mount, the host patchs/ is used.
+COPY patchs/ /work/patchs/
 RUN chmod +x /work/build_fso_android.sh
 
 CMD ["sh", "/work/build_fso_android.sh"]
