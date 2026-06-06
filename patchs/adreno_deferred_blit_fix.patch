@@ -1,0 +1,166 @@
+--- a/code/graphics/opengl/gropengldeferred.cpp	2026-05-28 00:27:17.000000000 +0000
++++ b/code/graphics/opengl/gropengldeferred.cpp	2026-05-28 12:23:55.508413752 +0000
+@@ -28,12 +28,60 @@
+ 
+ #include <math/bitarray.h>
+ 
++#ifdef USE_OPENGL_ES
++// --- Adreno same-FBO blit workaround ---------------------------------------
++// The deferred pipeline copies data between color attachments of the *same*
++// FBO (Scene_framebuffer) via glBlitFramebuffer with identical source/dest
++// regions. Per the spec this is "undefined" when the read and draw framebuffer
++// is the same object; most drivers (desktop, Mali, PowerVR, ANGLE, Zink) just
++// do it, but the Qualcomm Adreno driver rejects it outright with
++// "source and destination can not be the same" (GL_INVALID_OPERATION) and the
++// copy silently does nothing. That is why backgrounds (color->emissive copy in
++// _begin) and the lit/shadowed result (composite->color copy in _finish) never
++// reach the visible buffer on Adreno while everything else works.
++//
++// Fix: read from a second FBO that aliases just the source texture, so
++// READ_FRAMEBUFFER != DRAW_FRAMEBUFFER. Semantics are otherwise identical to
++// the original blit (same textures, same regions, no shader/blend/depth state
++// touched).
++static GLuint Deferred_blit_read_fbo = 0;
++
++static void opengl_deferred_intra_fbo_copy(GLuint src_tex, GLenum dst_attachment)
++{
++	if (Deferred_blit_read_fbo == 0)
++		glGenFramebuffers(1, &Deferred_blit_read_fbo);
++
++	// Source comes from the alias FBO (different object than the scene FBO).
++	GL_state.BindFrameBuffer(Deferred_blit_read_fbo, GL_READ_FRAMEBUFFER);
++	glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, src_tex, 0);
++	glReadBuffer(GL_COLOR_ATTACHMENT0);
++
++	// Destination stays on the scene FBO (still bound as draw).
++	glDrawBuffer(dst_attachment);
++
++	glBlitFramebuffer(0, 0, gr_screen.max_w, gr_screen.max_h,
++	                  0, 0, gr_screen.max_w, gr_screen.max_h,
++	                  GL_COLOR_BUFFER_BIT, GL_NEAREST);
++
++	// Restore read == draw == scene FBO so surrounding code is unaffected.
++	GL_state.BindFrameBuffer(Scene_framebuffer, GL_FRAMEBUFFER);
++}
++#endif // USE_OPENGL_ES
++
+ void gr_opengl_deferred_init()
+ {
+ 	gr_opengl_deferred_light_cylinder_init(16);
+ 	gr_opengl_deferred_light_sphere_init(16, 16);
+ }
+-void gr_opengl_deferred_shutdown() {}
++void gr_opengl_deferred_shutdown()
++{
++#ifdef USE_OPENGL_ES
++	if (Deferred_blit_read_fbo != 0) {
++		glDeleteFramebuffers(1, &Deferred_blit_read_fbo);
++		Deferred_blit_read_fbo = 0;
++	}
++#endif
++}
+ 
+ void opengl_clear_deferred_buffers()
+ {
+@@ -88,9 +136,13 @@
+ 	} else {
+ 		// Copy the existing color data into the emissive part of the G-buffer since everything that already existed is
+ 		// treated as emissive
++#ifdef USE_OPENGL_ES
++		opengl_deferred_intra_fbo_copy(Scene_color_texture, GL_COLOR_ATTACHMENT4);
++#else
+ 		glDrawBuffer(GL_COLOR_ATTACHMENT4);
+ 		glReadBuffer(GL_COLOR_ATTACHMENT0);
+ 		glBlitFramebuffer(0, 0, gr_screen.max_w, gr_screen.max_h, 0, 0, gr_screen.max_w, gr_screen.max_h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++#endif
+ 	}
+ 	
+ 	glDrawBuffers(6, buffers);
+@@ -232,6 +284,9 @@
+ 	opengl_shader_set_current(gr_opengl_maybe_create_shader(SDR_TYPE_DEFERRED_LIGHTING, ENVMAP > 0 ? SDR_FLAG_ENV_MAP : 0));
+ 	
+ 	// Render on top of the composite buffer texture
++#ifdef USE_OPENGL_ES
++	opengl_deferred_intra_fbo_copy(Scene_emissive_texture, GL_COLOR_ATTACHMENT5);
++#else
+ 	glDrawBuffer(GL_COLOR_ATTACHMENT5);
+ 	glReadBuffer(GL_COLOR_ATTACHMENT4);
+ 	glBlitFramebuffer(0,
+@@ -244,6 +299,7 @@
+ 		gr_screen.max_h,
+ 		GL_COLOR_BUFFER_BIT,
+ 		GL_NEAREST);
++#endif
+ 
+ 	GL_state.Texture.Enable(0, GL_TEXTURE_2D, Scene_color_texture);
+ 	GL_state.Texture.Enable(1, GL_TEXTURE_2D, Scene_normal_texture);
+@@ -563,6 +619,11 @@
+ 		opengl_draw_full_screen_textured(0.0f, 0.0f, 1.0f, 1.0f);
+ 
+ 		if (bDrawNebVolumetrics) {
++#ifdef USE_OPENGL_ES
++			opengl_deferred_intra_fbo_copy(Scene_color_texture, GL_COLOR_ATTACHMENT5);
++			glDrawBuffer(GL_COLOR_ATTACHMENT0);
++			glReadBuffer(GL_COLOR_ATTACHMENT0);
++#else
+ 			glReadBuffer(GL_COLOR_ATTACHMENT0);
+ 			glDrawBuffer(GL_COLOR_ATTACHMENT5);
+ 			glBlitFramebuffer(0,
+@@ -577,6 +638,7 @@
+ 				GL_NEAREST);
+ 			glDrawBuffer(GL_COLOR_ATTACHMENT0);
+ 			glReadBuffer(GL_COLOR_ATTACHMENT0);
++#endif
+ 		}
+ 		
+ 	} 
+@@ -664,6 +726,10 @@
+ 	if(!bDrawFullNeb && !bDrawNebVolumetrics) {
+ 		// Transfer the resolved lighting back to the color texture
+ 		// TODO: Maybe this could be improved so that it doesn't require the copy back operation?
++#ifdef USE_OPENGL_ES
++		opengl_deferred_intra_fbo_copy(Scene_composite_texture, GL_COLOR_ATTACHMENT0);
++		glReadBuffer(GL_COLOR_ATTACHMENT0);
++#else
+ 		glReadBuffer(GL_COLOR_ATTACHMENT5);
+ 		glBlitFramebuffer(0,
+ 						  0,
+@@ -676,6 +742,7 @@
+ 						  GL_COLOR_BUFFER_BIT,
+ 						  GL_NEAREST);
+ 		glReadBuffer(GL_COLOR_ATTACHMENT0);
++#endif
+ 	}
+ 
+ 	gr_set_proj_matrix(Proj_fov, gr_screen.clip_aspect, Min_draw_distance, Max_draw_distance);
+--- a/code/graphics/opengl/gropengldraw.cpp	2026-05-28 00:27:17.000000000 +0000
++++ b/code/graphics/opengl/gropengldraw.cpp	2026-05-28 12:24:46.873576505 +0000
+@@ -846,11 +846,28 @@
+ 		return;
+ 	}
+ 
++#ifdef USE_OPENGL_ES
++	// Adreno rejects glBlitFramebuffer when read FBO == draw FBO (see
++	// gropengldeferred.cpp). Copy color (ATTACHMENT0) -> composite (ATTACHMENT5)
++	// by reading through an alias FBO so the read and draw objects differ.
++	static GLuint effect_copy_read_fbo = 0;
++	if (effect_copy_read_fbo == 0)
++		glGenFramebuffers(1, &effect_copy_read_fbo);
++
++	GL_state.BindFrameBuffer(effect_copy_read_fbo, GL_READ_FRAMEBUFFER);
++	glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Scene_color_texture, 0);
++	glReadBuffer(GL_COLOR_ATTACHMENT0);
++	glDrawBuffer(GL_COLOR_ATTACHMENT5);
++	glBlitFramebuffer(0, 0, gr_screen.max_w, gr_screen.max_h, 0, 0, gr_screen.max_w, gr_screen.max_h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++	GL_state.BindFrameBuffer(Scene_framebuffer, GL_FRAMEBUFFER);
++	glDrawBuffer(GL_COLOR_ATTACHMENT0);
++#else
+     //Make sure we're reading from the up-to-date color texture
+     glReadBuffer(GL_COLOR_ATTACHMENT0);
+ 	glDrawBuffer(GL_COLOR_ATTACHMENT5);
+ 	glBlitFramebuffer(0, 0, gr_screen.max_w, gr_screen.max_h, 0, 0, gr_screen.max_w, gr_screen.max_h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+ 	glDrawBuffer(GL_COLOR_ATTACHMENT0);
++#endif
+ }
+ 
+ void gr_opengl_render_shield_impact(shield_material* material_info,
