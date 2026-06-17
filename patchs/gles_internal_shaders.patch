@@ -1,7 +1,7 @@
 From 292e91970442e2e16009ad1d07cbe38d2aff2e0a Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 26 May 2026 20:15:21 -0300
-Subject: [PATCH 01/10] gles changes
+Subject: [PATCH 01/11] gles changes
 
 ---
  code/def_files/data/effects/batched-f.sdr     |  7 ++-
@@ -1536,7 +1536,7 @@ index d511fea68a9..cda47c7c075 100644
 From 495d0266d12e4d3f306c6e8de812cd99a41d7846 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 26 May 2026 20:31:37 -0300
-Subject: [PATCH 02/10] fix fxaa gles
+Subject: [PATCH 02/11] fix fxaa gles
 
 ---
  code/def_files/data/effects/fxaa-f.sdr | 20 +++++++++-----------
@@ -1577,7 +1577,7 @@ index ce14861e9a5..52b5b27abe3 100644
 From cad4cdcbb048681150d624d93a68bab39b25485c Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 26 May 2026 20:44:08 -0300
-Subject: [PATCH 03/10] re-add removed include by accident
+Subject: [PATCH 03/11] re-add removed include by accident
 
 ---
  code/def_files/data/effects/msaa-f.sdr | 1 +
@@ -1596,7 +1596,7 @@ index 33a4f0ca629..9fabdd794a9 100644
 From e752cdd7bcf727da3efed2c557179aa7e4c0c0d3 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 27 May 2026 19:17:36 -0300
-Subject: [PATCH 04/10] add missing location to frag0
+Subject: [PATCH 04/11] add missing location to frag0
 
 ---
  code/def_files/data/effects/main-f.sdr | 2 +-
@@ -1619,7 +1619,7 @@ index 1c5912802df..f582a1c7001 100644
 From c4f16002bcb8bbaba1c41811da0e6eb60844366e Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 27 May 2026 19:20:05 -0300
-Subject: [PATCH 05/10] add gles default-material
+Subject: [PATCH 05/11] add gles default-material
 
 ---
  .../data/effects/default-material-f.sdr       | 59 -------------------
@@ -2028,7 +2028,7 @@ index 4c7763a2e62..09a7946c3db 100644
 From ae06d45b94cf31258f124d9e1a84ccf17bbc64a4 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 30 May 2026 21:00:06 -0300
-Subject: [PATCH 06/10] cleanup deferred-f.sdr
+Subject: [PATCH 06/11] cleanup deferred-f.sdr
 
 ---
  code/def_files/data/effects/deferred-f.sdr | 16 +++++-----------
@@ -2071,7 +2071,7 @@ index 8da2612d3bd..b2dfb30922b 100644
 From 28fba33cbde9b6c4c189989b0c2ce9bf048a32ac Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sun, 31 May 2026 12:33:55 -0300
-Subject: [PATCH 07/10] corrections and cleanup
+Subject: [PATCH 07/11] corrections and cleanup
 
 ---
  code/def_files/data/effects/decal-f.sdr       | 17 +++++++---------
@@ -2267,7 +2267,7 @@ index 57f628f809d..2d82573c054 100644
 From 97ecb88a0739853bec3a6571afeb96a83b4c927e Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sun, 31 May 2026 14:53:14 -0300
-Subject: [PATCH 08/10] Correct ES warning
+Subject: [PATCH 08/11] Correct ES warning
 
 ---
  code/graphics/opengl/es_compatibility.h | 1 +
@@ -2278,7 +2278,7 @@ Subject: [PATCH 08/10] Correct ES warning
 From 419748371216ab2124397c529f6e58551e6ff93c Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sun, 31 May 2026 15:29:46 -0300
-Subject: [PATCH 09/10] fix main-f
+Subject: [PATCH 09/11] fix main-f
 
 ---
  code/def_files/data/effects/main-f.sdr | 2 +-
@@ -2301,7 +2301,7 @@ index 94cd93b1673..6603a1c382a 100644
 From 1771a58cd3dcbde0c44159dc38b5852cff34069b Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 3 Jun 2026 22:32:21 -0300
-Subject: [PATCH 10/10] Delete envmap outColor
+Subject: [PATCH 10/11] Delete envmap outColor
 
 ---
  code/def_files/data/effects/envmap-sphere-warp-f.sdr | 2 --
@@ -2320,3 +2320,270 @@ index 55d845a95bd..c24de4e1f3f 100644
  void main() {
  	const float theta = -fragTexCoord.x * (2.0 * M_PI);
  	const float phi = fragTexCoord.y * (M_PI) - (0.5 * M_PI);
+From d35f6d9ede52447c0cbb6afc76e70f5edb1dfcec Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Wed, 17 Jun 2026 12:00:00 -0300
+Subject: [PATCH 11/11] gles: use GL_EXT_clip_cull_distance when present
+
+Detect GL_EXT_clip_cull_distance at compile time and route the model
+clip plane through native gl_ClipDistance when available (always on
+desktop, on GLES when the extension is present), falling back to the
+vClipDist varying + fragment discard otherwise. Applies to main-v/g/f
+and the embedded GLES default-material shaders.
+---
+ code/def_files/data/effects/main-f.sdr        |  9 +++++--
+ code/def_files/data/effects/main-g.sdr        | 27 +++++++++++--------
+ code/def_files/data/effects/main-v.sdr        | 19 ++++++++-----
+ .../default-material.frag.spv.gles.glsl       |  9 +++++++
+ .../default-material.vert.spv.gles.glsl       | 11 ++++++++
+ 5 files changed, 56 insertions(+), 19 deletions(-)
+
+diff --git a/code/def_files/data/effects/main-f.sdr b/code/def_files/data/effects/main-f.sdr
+index 6603a1c..59cd5ce 100644
+--- a/code/def_files/data/effects/main-f.sdr
++++ b/code/def_files/data/effects/main-f.sdr
+@@ -1,5 +1,6 @@
+ //? #version 150
+ #ifdef GL_ES
++#extension GL_EXT_clip_cull_distance : enable
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
+@@ -7,6 +8,10 @@ precision highp sampler2DArray;
+ precision highp samplerCube;
+ #endif
+ 
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ #include "shadows.sdr" //! #include "shadows.sdr"
+ #include "lighting.sdr" //! #include "lighting.sdr"
+ #include "gamma.sdr" //! #include "gamma.sdr"
+@@ -119,7 +124,7 @@ in VertexOutput {
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 
+-#ifdef GL_ES
++#ifndef USE_HW_CLIP_DISTANCE
+     float vClipDist;
+ #endif
+ } vertIn;
+@@ -215,7 +220,7 @@ vec3 CalculateLighting(vec3 normal, vec3 diffuseMaterial, vec3 specularMaterial,
+ 
+ void main()
+ {
+-	#ifdef GL_ES
++	#ifndef USE_HW_CLIP_DISTANCE
+ 		if (vertIn.vClipDist < 0.0) discard;
+ 	#endif
+ 	
+diff --git a/code/def_files/data/effects/main-g.sdr b/code/def_files/data/effects/main-g.sdr
+index 35b864a..62f56c1 100644
+--- a/code/def_files/data/effects/main-g.sdr
++++ b/code/def_files/data/effects/main-g.sdr
+@@ -1,5 +1,6 @@
+ #ifdef GL_ES
+ #extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
+@@ -9,6 +10,10 @@ precision highp samplerCube;
+ #extension GL_ARB_gpu_shader5: enable
+ #endif
+ 
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ #conditional_include +"LARGE_SHADER" "main_large.sdr"
+ #conditional_include -"LARGE_SHADER" "main_small.sdr"
+ 
+@@ -132,7 +137,7 @@ in VertexOutput {
+ 	vec4 shadowUV[4];
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+-#ifdef GL_ES
++#ifndef USE_HW_CLIP_DISTANCE
+     float vClipDist;
+ #endif
+ } vertIn[];
+@@ -153,7 +158,7 @@ out VertexOutput {
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 
+-#ifdef GL_ES
++#ifndef USE_HW_CLIP_DISTANCE
+     float vClipDist;
+ #endif
+ } vertOut;
+@@ -205,10 +210,10 @@ out VertexOutput {
+ 			#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_SHADOWS
+ 
+ 			if (use_clip_plane) {
+-				#ifdef GL_ES
+-					vertOut.vClipDist = vertIn[vert].vClipDist;
+-				#else
++				#ifdef USE_HW_CLIP_DISTANCE
+ 					gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++				#else
++					vertOut.vClipDist = vertIn[vert].vClipDist;
+ 				#endif
+ 			}
+ 			EmitVertex();
+@@ -263,16 +268,16 @@ out VertexOutput {
+                 #prereplace ENDIF_FLAG //MODEL_SDR_FLAG_SHADOWS
+ 
+ 				if (use_clip_plane) {
+-					#ifdef GL_ES
+-						vertOut.vClipDist = vertIn[vert].vClipDist;
+-					#else
++					#ifdef USE_HW_CLIP_DISTANCE
+ 						gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++					#else
++						vertOut.vClipDist = vertIn[vert].vClipDist;
+ 					#endif
+ 				} else {
+-					#ifdef GL_ES
+-						vertOut.vClipDist = 1.0;
+-					#else
++					#ifdef USE_HW_CLIP_DISTANCE
+ 						gl_ClipDistance[0] = 1.0;
++					#else
++						vertOut.vClipDist = 1.0;
+ 					#endif
+ 				}
+ 
+diff --git a/code/def_files/data/effects/main-v.sdr b/code/def_files/data/effects/main-v.sdr
+index d038192..9479746 100644
+--- a/code/def_files/data/effects/main-v.sdr
++++ b/code/def_files/data/effects/main-v.sdr
+@@ -1,6 +1,7 @@
+ //? #version 150
+ #ifdef GL_ES
+ #extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
+@@ -11,6 +12,12 @@ precision highp samplerBuffer;
+ #extension GL_ARB_gpu_shader5: enable
+ #endif
+ 
++// gl_ClipDistance nativo en desktop, o en GLES si el driver expone
++// GL_EXT_clip_cull_distance. Si no, fallback al varying + discard.
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ #include "shadows.sdr"
+ 
+ #conditional_include +"LARGE_SHADER" "main_large.sdr"
+@@ -135,7 +142,7 @@ out VertexOutput {
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 
+-#ifdef GL_ES
++#ifndef USE_HW_CLIP_DISTANCE
+     float vClipDist;
+ #endif
+ } vertOut;
+@@ -216,17 +223,17 @@ void main()
+ 		#endif
+ 	#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_TRANSFORM
+ 
+-	#ifdef GL_ES
++	#ifdef USE_HW_CLIP_DISTANCE
+ 		if (use_clip_plane) {
+-			vertOut.vClipDist = dot(clip_equation, modelMatrix * orient * vertex); 
++			gl_ClipDistance[0] = dot(clip_equation, modelMatrix * orient * vertex);
+ 		} else {
+-			vertOut.vClipDist = 1.0;
++			gl_ClipDistance[0] = 1.0;
+ 		}
+ 	#else
+ 		if (use_clip_plane) {
+-			gl_ClipDistance[0] = dot(clip_equation, modelMatrix * orient * vertex);
++			vertOut.vClipDist = dot(clip_equation, modelMatrix * orient * vertex); 
+ 		} else {
+-			gl_ClipDistance[0] = 1.0;
++			vertOut.vClipDist = 1.0;
+ 		}
+ 	#endif
+ 
+diff --git a/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl b/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
+index 602b246..ea39100 100644
+--- a/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
++++ b/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
+@@ -1,4 +1,5 @@
+ #version 320 es
++#extension GL_EXT_clip_cull_distance : enable
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
+@@ -18,17 +19,25 @@ layout(std140) uniform genericData
+     uint clipEnabled;
+ } _39;
+ 
++#if defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ uniform sampler2DArray baseMap;
++#ifndef USE_HW_CLIP_DISTANCE
+ in highp float vClipDist;
++#endif
+ in vec4 fragTexCoord;
+ in vec4 fragColor;
+ layout (location=0) out vec4 fragOut0;
+ 
+ void main()
+ {
++#ifndef USE_HW_CLIP_DISTANCE
+ 	if (_39.clipEnabled != 0u && vClipDist < 0.0) {
+ 		discard;
+ 	}
++#endif
+     vec4 _48 = texture(baseMap, vec3(fragTexCoord.xy, float(_39.baseMapIndex)));
+     if (_39.alphaThreshold > _48.w)
+     {
+diff --git a/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl b/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
+index 450b956..516121d 100644
+--- a/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
++++ b/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
+@@ -1,4 +1,5 @@
+ #version 320 es
++#extension GL_EXT_clip_cull_distance : enable
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
+@@ -24,12 +25,18 @@ layout(std140) uniform matrixData
+     mat4 projMatrix;
+ } _36;
+ 
++#if defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ out vec4 fragTexCoord;
+ in vec4 vertTexCoord;
+ out vec4 fragColor;
+ in vec4 vertColor;
+ in vec4 vertPosition;
++#ifndef USE_HW_CLIP_DISTANCE
+ out float vClipDist;
++#endif
+ 
+ void main()
+ {
+@@ -37,5 +44,9 @@ void main()
+     fragColor = vertColor * _22.color;
+     gl_Position = (_36.projMatrix * _36.modelViewMatrix) * vertPosition;
+ 	float d = dot(_22.clipEquation, _22.modelMatrix * vertPosition);
++#ifdef USE_HW_CLIP_DISTANCE
++	gl_ClipDistance[0] = (_22.clipEnabled != 0u) ? d : 1.0;
++#else
+ 	vClipDist = (_22.clipEnabled != 0u) ? d : 1.0;
++#endif
+ }
