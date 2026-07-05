@@ -1,7 +1,7 @@
 From ce833dbd6b3c2779be8624b8da4d1e4bb8e59403 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 4 Jul 2026 22:30:00 -0300
-Subject: [PATCH] gles shader support
+Subject: [PATCH 1/3] gles shader support
 
 ---
  code/def_files/data/effects/batched-f.sdr     |  7 +-
@@ -1769,3 +1769,115 @@ index e7bae0f7860..df24c8490ef 100644
  	GLAD_GL_EXT_disjoint_timer_query = has_ext("GL_EXT_disjoint_timer_query");
  	GLAD_GL_EXT_gpu_shader5 = has_ext("GL_EXT_gpu_shader5");
  	GLAD_GL_EXT_multisampled_render_to_texture = has_ext("GL_EXT_multisampled_render_to_texture");
+
+From 039330ee6bb7714e4874ef75077680b06651dc76 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sun, 5 Jul 2026 12:50:18 -0300
+Subject: [PATCH 2/3] fix shadow varying
+
+---
+ code/def_files/data/effects/shadow_map-f.sdr | 16 ++++++++++++++++
+ code/def_files/data/effects/shadow_map-g.sdr |  8 +++++++-
+ code/def_files/data/effects/shadow_map-v.sdr |  6 ++++++
+ 3 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/code/def_files/data/effects/shadow_map-f.sdr b/code/def_files/data/effects/shadow_map-f.sdr
+index fff405831fd..1c9002f4ab7 100644
+--- a/code/def_files/data/effects/shadow_map-f.sdr
++++ b/code/def_files/data/effects/shadow_map-f.sdr
+@@ -1,5 +1,21 @@
+ //? #version 150
++#ifdef GL_ES
++#extension GL_EXT_clip_cull_distance: enable
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
++#ifndef USE_HW_CLIP_DISTANCE
++in VertexOutput {
++	float vClipDist;
++} vertIn;
++#endif
+ 
+ void main()
+ {
++#ifndef USE_HW_CLIP_DISTANCE
++	if (vertIn.vClipDist < 0.0) discard;
++#endif
+ }
+diff --git a/code/def_files/data/effects/shadow_map-g.sdr b/code/def_files/data/effects/shadow_map-g.sdr
+index f85c63a79d2..e2709f41c5c 100644
+--- a/code/def_files/data/effects/shadow_map-g.sdr
++++ b/code/def_files/data/effects/shadow_map-g.sdr
+@@ -35,10 +35,16 @@ in VertexOutput {
+ 	float clipModel;
+ 	vec3 normal;
+ #ifndef USE_HW_CLIP_DISTANCE
+-    float vClipDist;
++	float vClipDist;
+ #endif
+ } vertIn[];
+ 
++#ifndef USE_HW_CLIP_DISTANCE
++out VertexOutput {
++	float vClipDist;
++} vertOut;
++#endif
++
+ void main(void)
+ {
+ #if defined(GL_ARB_gpu_shader5) || defined(GL_EXT_gpu_shader5)
+diff --git a/code/def_files/data/effects/shadow_map-v.sdr b/code/def_files/data/effects/shadow_map-v.sdr
+index ab981ba446c..6bea66f13c3 100644
+--- a/code/def_files/data/effects/shadow_map-v.sdr
++++ b/code/def_files/data/effects/shadow_map-v.sdr
+@@ -53,6 +53,10 @@ out VertexOutput {
+     float vClipDist;
+ #endif
+ } vertOut;
++#elif !defined(USE_HW_CLIP_DISTANCE)
++out VertexOutput {
++	float vClipDist;
++} vertOut;
+ #endif
+ 
+ #define TEXELS_PER_MATRIX 4
+@@ -81,12 +85,14 @@ void main()
+ 	normal = normalize(mat3(modelViewMatrix) * mat3(orient) * vertNormal);
+ 	position = modelViewMatrix * orient * vertex;
+ 
++#ifdef GEOMETRY_FALLBACK
+ #if !defined(GL_ARB_gpu_shader5) && !defined(GL_EXT_gpu_shader5)
+  #ifdef APPLE
+ 	vertOut.instance = float(gl_InstanceIDARB);
+  #else
+ 	vertOut.instance = float(gl_InstanceID);
+  #endif
++#endif
+ #endif
+ 
+ 	if (clipModel) {
+
+From 2b5b5c1a66522c0bb95b7632764bf853af0ab240 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sun, 5 Jul 2026 14:01:33 -0300
+Subject: [PATCH 3/3] add precision for vclipdist
+
+---
+ code/def_files/data/effects/shadow_map-f.sdr | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/code/def_files/data/effects/shadow_map-f.sdr b/code/def_files/data/effects/shadow_map-f.sdr
+index 1c9002f4ab7..b6798e0fc15 100644
+--- a/code/def_files/data/effects/shadow_map-f.sdr
++++ b/code/def_files/data/effects/shadow_map-f.sdr
+@@ -1,6 +1,7 @@
+ //? #version 150
+ #ifdef GL_ES
+ #extension GL_EXT_clip_cull_distance: enable
++precision highp float;
+ #endif
+ 
+ #if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
