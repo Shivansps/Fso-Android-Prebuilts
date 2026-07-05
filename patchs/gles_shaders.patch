@@ -1,0 +1,1771 @@
+From ce833dbd6b3c2779be8624b8da4d1e4bb8e59403 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 4 Jul 2026 22:30:00 -0300
+Subject: [PATCH] gles shader support
+
+---
+ code/def_files/data/effects/batched-f.sdr     |  7 +-
+ code/def_files/data/effects/batched-v.sdr     |  5 ++
+ code/def_files/data/effects/bloom-comp-f.sdr  |  7 +-
+ code/def_files/data/effects/blur-f.sdr        |  8 ++-
+ code/def_files/data/effects/brightpass-f.sdr  |  8 ++-
+ code/def_files/data/effects/copy-f.sdr        | 11 +++-
+ code/def_files/data/effects/decal-f.sdr       | 20 ++++--
+ code/def_files/data/effects/decal-v.sdr       |  6 ++
+ .../data/effects/deferred-clear-f.sdr         | 20 ++++--
+ code/def_files/data/effects/deferred-f.sdr    | 29 +++++---
+ code/def_files/data/effects/deferred-v.sdr    |  7 ++
+ .../data/effects/effect-distort-f.sdr         |  9 ++-
+ .../data/effects/effect-distort-v.sdr         |  7 ++
+ code/def_files/data/effects/effect-f.sdr      |  9 ++-
+ code/def_files/data/effects/effect-g.sdr      |  8 +++
+ code/def_files/data/effects/effect-v.sdr      |  7 ++
+ .../data/effects/envmap-sphere-warp-f.sdr     | 10 ++-
+ code/def_files/data/effects/fog-f.sdr         | 11 +++-
+ code/def_files/data/effects/fxaa-f.sdr        | 18 ++++-
+ code/def_files/data/effects/fxaa-v.sdr        |  8 +++
+ code/def_files/data/effects/fxaapre-f.sdr     |  8 ++-
+ .../data/effects/gamma-correct-f.sdr          |  7 +-
+ code/def_files/data/effects/gamma.sdr         |  3 +
+ code/def_files/data/effects/irrmap-f.sdr      | 18 +++--
+ code/def_files/data/effects/lighting.sdr      |  6 +-
+ code/def_files/data/effects/ls-f.sdr          |  7 +-
+ code/def_files/data/effects/main-f.sdr        | 39 ++++++++---
+ code/def_files/data/effects/main-g.sdr        | 32 ++++++++-
+ code/def_files/data/effects/main-v.sdr        | 39 +++++++++--
+ code/def_files/data/effects/msaa-f.sdr        | 19 ++++--
+ code/def_files/data/effects/nanovg-f.sdr      |  6 ++
+ code/def_files/data/effects/nanovg-v.sdr      |  6 ++
+ code/def_files/data/effects/normals.sdr       |  2 +-
+ code/def_files/data/effects/passthrough-f.sdr |  7 +-
+ code/def_files/data/effects/post-f.sdr        |  9 ++-
+ code/def_files/data/effects/rocketui-f.sdr    |  8 ++-
+ code/def_files/data/effects/rocketui-v.sdr    |  6 ++
+ code/def_files/data/effects/shadow_map-g.sdr  | 27 ++++++--
+ code/def_files/data/effects/shadow_map-v.sdr  | 28 +++++++-
+ code/def_files/data/effects/shadows.sdr       |  2 +-
+ .../data/effects/shield-impact-f.sdr          |  8 ++-
+ .../data/effects/shield-impact-v.sdr          |  6 ++
+ code/def_files/data/effects/smaa-blend-f.sdr  |  8 ++-
+ code/def_files/data/effects/smaa-blend-v.sdr  |  6 ++
+ code/def_files/data/effects/smaa-edge-f.sdr   |  8 ++-
+ code/def_files/data/effects/smaa-edge-v.sdr   |  6 ++
+ .../data/effects/smaa-neighbour-f.sdr         |  8 ++-
+ .../data/effects/smaa-neighbour-v.sdr         |  6 ++
+ code/def_files/data/effects/tonemapping-f.sdr |  8 ++-
+ code/def_files/data/effects/video-f.sdr       |  9 ++-
+ code/def_files/data/effects/volumetric-f.sdr  |  8 ++-
+ code/graphics/opengl/es_compatibility.h       |  8 +--
+ code/graphics/opengl/gropengl.cpp             |  4 +-
+ code/graphics/opengl/gropenglshader.cpp       | 16 ++---
+ .../default-material.frag.spv.gles.glsl       | 66 +++++++++++++++++++
+ .../default-material.vert.spv.gles.glsl       | 52 +++++++++++++++
+ code/shaders.cmake                            | 22 +++++++
+ lib/opengl/gl/glad_es/include/glad/glad.h     | 12 +++-
+ lib/opengl/gl/glad_es/src/glad.c              |  9 ++-
+ 59 files changed, 659 insertions(+), 105 deletions(-)
+ create mode 100644 code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
+ create mode 100644 code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
+
+diff --git a/code/def_files/data/effects/batched-f.sdr b/code/def_files/data/effects/batched-f.sdr
+index 82239181efa..1690e68b3ee 100644
+--- a/code/def_files/data/effects/batched-f.sdr
++++ b/code/def_files/data/effects/batched-f.sdr
+@@ -1,10 +1,15 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2DArray;
++#endif
+ 
+ #include "gamma.sdr"
+ 
+ in vec4 fragTexCoord;
+ in vec4 fragColor;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2DArray baseMap;
+ 
+diff --git a/code/def_files/data/effects/batched-v.sdr b/code/def_files/data/effects/batched-v.sdr
+index 499ed2a6a0f..9a9c9b4bf27 100644
+--- a/code/def_files/data/effects/batched-v.sdr
++++ b/code/def_files/data/effects/batched-v.sdr
+@@ -1,3 +1,8 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++#endif
++
+ in vec4 vertPosition;
+ in vec4 vertTexCoord;
+ in vec4 vertColor;
+diff --git a/code/def_files/data/effects/bloom-comp-f.sdr b/code/def_files/data/effects/bloom-comp-f.sdr
+index bc502b31313..74d85c2cc2b 100644
+--- a/code/def_files/data/effects/bloom-comp-f.sdr
++++ b/code/def_files/data/effects/bloom-comp-f.sdr
+@@ -1,7 +1,12 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D bloomed;
+ 
+diff --git a/code/def_files/data/effects/blur-f.sdr b/code/def_files/data/effects/blur-f.sdr
+index b170964a627..7758227f9de 100644
+--- a/code/def_files/data/effects/blur-f.sdr
++++ b/code/def_files/data/effects/blur-f.sdr
+@@ -1,4 +1,10 @@
+-out vec4 fragOut0;
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
++
++layout (location=0) out vec4 fragOut0;
+ 
+ in vec4 fragTexCoord;
+ 
+diff --git a/code/def_files/data/effects/brightpass-f.sdr b/code/def_files/data/effects/brightpass-f.sdr
+index d92f74e5f9f..6ee339f4739 100644
+--- a/code/def_files/data/effects/brightpass-f.sdr
++++ b/code/def_files/data/effects/brightpass-f.sdr
+@@ -1,5 +1,11 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
++
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ uniform sampler2D tex;
+ const float Luminance = 0.08;
+ const float fMiddleGray = 0.2;
+diff --git a/code/def_files/data/effects/copy-f.sdr b/code/def_files/data/effects/copy-f.sdr
+index 6c0b8d74781..c8dc600f395 100644
+--- a/code/def_files/data/effects/copy-f.sdr
++++ b/code/def_files/data/effects/copy-f.sdr
+@@ -1,5 +1,12 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ #ifdef COPY_ARRAY
+ uniform sampler2DArray tex;
+@@ -10,7 +17,7 @@ uniform sampler2D tex;
+ void main()
+ {
+ #ifdef COPY_ARRAY
+-	fragOut0 = texture(tex, vec3(fragTexCoord.xy, 0));
++	fragOut0 = texture(tex, vec3(fragTexCoord.xy, 0.0));
+ #else
+ 	fragOut0 = texture(tex, fragTexCoord.xy);
+ #endif
+diff --git a/code/def_files/data/effects/decal-f.sdr b/code/def_files/data/effects/decal-f.sdr
+index 138caae0ec5..7528f920160 100644
+--- a/code/def_files/data/effects/decal-f.sdr
++++ b/code/def_files/data/effects/decal-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ // NOTE: The technique and some of this code is based on this tutorial:
+ // http://martindevans.me/game-development/2015/02/27/Drawing-Stuff-On-Other-Stuff-With-Deferred-Screenspace-Decals/
+@@ -6,9 +12,15 @@
+ #include "normals.sdr"
+ #include "gamma.sdr"
+ 
+-out vec4 fragOut0; // Diffuse buffer
+-out vec4 fragOut1; // Normal buffer
+-out vec4 fragOut2; // Emissive buffer
++
++layout (location=0) out vec4 fragOut0; // Diffuse buffer
++#ifndef GL_ES
++layout (location=1) out vec4 fragOut1; // Normal buffer
++layout (location=2) out vec4 fragOut2; // Emissive buffer
++#else
++layout (location=2) out vec4 fragOut1; // Normal buffer   -> COLOR_ATTACHMENT2
++layout (location=4) out vec4 fragOut2; // Emissive buffer -> COLOR_ATTACHMENT4
++#endif
+ 
+ flat in mat4 invModelMatrix;
+ flat in vec3 decalDirection;
+@@ -82,7 +94,7 @@ vec3 getPixelNormal(vec3 frag_position, vec2 tex_coord, inout float alpha, out v
+ 	}
+ 
+ 	// Make a smooth alpha transition leading up to an edge
+-	alpha = alpha * (1 - smoothstep(angle_fade_start, normal_angle_cutoff, angle));
++	alpha = alpha * (1.0 - smoothstep(angle_fade_start, normal_angle_cutoff, angle));
+ 
+ 	return normal;
+ }
+diff --git a/code/def_files/data/effects/decal-v.sdr b/code/def_files/data/effects/decal-v.sdr
+index bd3511e0c7e..61b82cfe4b7 100644
+--- a/code/def_files/data/effects/decal-v.sdr
++++ b/code/def_files/data/effects/decal-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ in vec4 vertPosition;
+ in mat4 vertModelMatrix;
+diff --git a/code/def_files/data/effects/deferred-clear-f.sdr b/code/def_files/data/effects/deferred-clear-f.sdr
+index 4d49695ef90..0f8fed7aa62 100644
+--- a/code/def_files/data/effects/deferred-clear-f.sdr
++++ b/code/def_files/data/effects/deferred-clear-f.sdr
+@@ -1,9 +1,17 @@
+-out vec4 fragOut0;
+-out vec4 fragOut1;
+-out vec4 fragOut2;
+-out vec4 fragOut3;
+-out vec4 fragOut4;
+-out vec4 fragOut5;
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
++layout (location=0) out vec4 fragOut0;
++layout (location=1) out vec4 fragOut1;
++layout (location=2) out vec4 fragOut2;
++layout (location=3) out vec4 fragOut3;
++layout (location=4) out vec4 fragOut4;
++layout (location=5) out vec4 fragOut5;
++
+ void main()
+ {
+ 	fragOut0 = vec4(0.0, 0.0, 0.0, 1.0); // color
+diff --git a/code/def_files/data/effects/deferred-f.sdr b/code/def_files/data/effects/deferred-f.sdr
+index 2622a8a92f3..2194f8e1b7e 100644
+--- a/code/def_files/data/effects/deferred-f.sdr
++++ b/code/def_files/data/effects/deferred-f.sdr
+@@ -1,10 +1,23 @@
+ //? #version 150
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++precision highp sampler2DArrayShadow;
++#endif
++
+ #include "lighting.sdr" //! #include "lighting.sdr"
+ #include "gamma.sdr" //! #include "gamma.sdr"
+ #include "shadows.sdr" //! #include "shadows.sdr"
+ #include "z-compress.sdr" //! #include "z-compress.sdr"
+ 
+-out vec4 fragOut0;
++#ifndef GL_ES
++layout(location = 0) out vec4 fragOut0;
++#else
++layout(location = 5) out vec4 fragOut0;
++#endif
+ 
+ uniform sampler2D ColorBuffer;
+ uniform sampler2D NormalBuffer;
+@@ -94,7 +107,7 @@ void GetLightInfo(vec3 position, in float alpha, in vec3 reflectDir, out vec3 li
+ 			lightDirOut = ExpandLightSize(lightDirOut, reflectDir);
+ 			dist = length(lightDirOut);
+ 			// Energy conservation term
+-			float alpha_adjust = clamp(alpha + (sourceRadius/(2*dist)), 0.0, 1.0);
++			float alpha_adjust = clamp(alpha + (sourceRadius/(2.0*dist)), 0.0, 1.0);
+ 			area_normalisation = alpha/alpha_adjust;
+ 			area_normalisation *= area_normalisation;
+ 			//end chunk
+@@ -136,7 +149,7 @@ void GetLightInfo(vec3 position, in float alpha, in vec3 reflectDir, out vec3 li
+ 			lightDirOut = ExpandLightSize(lightDirOut, reflectDir);
+ 			float dist = length(lightDirOut);
+ 			// Energy conservation term
+-			float alpha_adjust = min(alpha + (sourceRadius/(2*dist)), 1.0);
++			float alpha_adjust = min(alpha + (sourceRadius/(2.0*dist)), 1.0);
+ 			area_normalisation = alpha/alpha_adjust;
+ 			// don't need to square as it's a line rather than a sphere.
+ 			//end chunk
+@@ -182,11 +195,11 @@ void ComputeEnvLight(float alpha, float ao, vec3 light_dir, vec3 eyeDir, vec3 no
+ 	// so let s = (2/alpha^2 - 2)
+ 	// 1/2 log(s + 1) = 1/2 log(2/alpha^2 -1)
+ 
+-	const float ENV_REZ = 512; // Ideally this would be #define'd and shader recompiled with envmap rez changes
+-	const float REZ_BIAS = log2(ENV_REZ * sqrt(3));
++	const float ENV_REZ = 512.0; // Ideally this would be #define'd and shader recompiled with envmap rez changes
++	const float REZ_BIAS = log2(ENV_REZ * sqrt(3.0));
+ 
+ 	float alphaSqr = alpha * alpha;
+-	float rough_bias = 0.5 * log2(2/alphaSqr - 1);
++	float rough_bias = 0.5 * log2(2.0/alphaSqr - 1.0);
+ 	float mip_bias = REZ_BIAS - rough_bias;
+ 
+ 	// Sample light, using mip bias to blur it.
+@@ -204,7 +217,7 @@ void ComputeEnvLight(float alpha, float ao, vec3 light_dir, vec3 eyeDir, vec3 no
+ 	// Pseudo-IBL, so use k_IBL
+ 	float k = alpha * alpha/ 2.0f;
+ 
+-	float NdotL = max(dot(light_dir, normal),0);
++	float NdotL = max(dot(light_dir, normal),0.0);
+ 
+ 	float g1vNL = GeometrySchlickGGX(NdotL, k);
+ 	vec3 specEnvLighting = specEnvColour.rgb * fresnel * g1vNL;
+@@ -272,6 +285,6 @@ void main()
+ 		float NdotL = clamp(dot(normal, lightDir), 0.0, 1.0);
+ 		fragmentColor.rgb = computeLighting(specColor.rgb, diffColor, lightDir, normal.xyz, halfVec, eyeDir, roughness, fresnel, NdotL).rgb * diffuseLightColor * attenuation * area_normalisation;
+ 	}
+-
++	
+ 	fragOut0 = max(fragmentColor, vec4(0.0));
+ }
+diff --git a/code/def_files/data/effects/deferred-v.sdr b/code/def_files/data/effects/deferred-v.sdr
+index f1633569875..dac952b3713 100644
+--- a/code/def_files/data/effects/deferred-v.sdr
++++ b/code/def_files/data/effects/deferred-v.sdr
+@@ -1,3 +1,10 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
+ 
+ #include "lighting.sdr"
+ 
+diff --git a/code/def_files/data/effects/effect-distort-f.sdr b/code/def_files/data/effects/effect-distort-f.sdr
+index dc030e63067..61146f00ec9 100644
+--- a/code/def_files/data/effects/effect-distort-f.sdr
++++ b/code/def_files/data/effects/effect-distort-f.sdr
+@@ -1,8 +1,15 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
+ in vec4 fragTexCoord;
+ in vec4 fragColor;
+ in float fragOffset;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2DArray baseMap;
+ uniform sampler2D depthMap;
+diff --git a/code/def_files/data/effects/effect-distort-v.sdr b/code/def_files/data/effects/effect-distort-v.sdr
+index 02c4790b8ab..9127a1c1f2c 100644
+--- a/code/def_files/data/effects/effect-distort-v.sdr
++++ b/code/def_files/data/effects/effect-distort-v.sdr
+@@ -1,3 +1,10 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
+ in vec4 vertPosition;
+ in vec4 vertTexCoord;
+ in vec4 vertColor;
+diff --git a/code/def_files/data/effects/effect-f.sdr b/code/def_files/data/effects/effect-f.sdr
+index 40ac90bce92..061aaabe90e 100644
+--- a/code/def_files/data/effects/effect-f.sdr
++++ b/code/def_files/data/effects/effect-f.sdr
+@@ -1,3 +1,10 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
+ 
+ #include "gamma.sdr"
+ #include "z-compress.sdr"
+@@ -7,7 +14,7 @@ in vec4 fragPosition;
+ in vec4 fragTexCoord;
+ in vec4 fragColor;
+ 
+-out vec4 fragOut0;
++layout (location=0) out vec4 fragOut0;
+ 
+ uniform sampler2DArray baseMap;
+ uniform sampler2D depthMap;
+diff --git a/code/def_files/data/effects/effect-g.sdr b/code/def_files/data/effects/effect-g.sdr
+index d1cb2311291..b1a2f34c02f 100644
+--- a/code/def_files/data/effects/effect-g.sdr
++++ b/code/def_files/data/effects/effect-g.sdr
+@@ -1,3 +1,11 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
++
+ layout (points) in;
+ layout (triangle_strip, max_vertices = 4) out;
+ 
+diff --git a/code/def_files/data/effects/effect-v.sdr b/code/def_files/data/effects/effect-v.sdr
+index 3a86333b637..ee7b90166f5 100644
+--- a/code/def_files/data/effects/effect-v.sdr
++++ b/code/def_files/data/effects/effect-v.sdr
+@@ -1,3 +1,10 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
+ 
+ in vec4 vertPosition;
+ in vec4 vertTexCoord;
+diff --git a/code/def_files/data/effects/envmap-sphere-warp-f.sdr b/code/def_files/data/effects/envmap-sphere-warp-f.sdr
+index ab2b4071618..c24de4e1f3f 100644
+--- a/code/def_files/data/effects/envmap-sphere-warp-f.sdr
++++ b/code/def_files/data/effects/envmap-sphere-warp-f.sdr
+@@ -1,11 +1,15 @@
+ #define M_PI 3.1415926535897932384626433832795
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp samplerCube;
++#endif
++
+ uniform samplerCube envmap;
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
+-
+-layout (location = 0) out vec4 outColor;
++layout(location=0) out vec4 fragOut0;
+ 
+ void main() {
+ 	const float theta = -fragTexCoord.x * (2.0 * M_PI);
+diff --git a/code/def_files/data/effects/fog-f.sdr b/code/def_files/data/effects/fog-f.sdr
+index 3785d719722..86193ab13c6 100644
+--- a/code/def_files/data/effects/fog-f.sdr
++++ b/code/def_files/data/effects/fog-f.sdr
+@@ -1,9 +1,14 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
+ 
+ #include "gamma.sdr"
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D tex;
+ uniform sampler2D depth_tex;
+@@ -27,7 +32,7 @@ void main()
+ 	// If the scene is in fog then we change the color we operate on based on the depth of the pixel
+ 	float depth_val = texture(depth_tex, fragTexCoord.xy).x;
+ 	// Transform depth value from [0, 1] to [-1, 1]
+-	float depth_normalized = 2 * depth_val - 1;
++	float depth_normalized = 2.0 * depth_val - 1.0;
+ 	// Now we compute the depth value in projection space using the clipping plane information
+ 	float view_depth = 2.0 * zNear * zFar / (zFar + zNear - depth_normalized * (zFar - zNear));
+ 
+@@ -37,7 +42,7 @@ void main()
+ 	if (isinf(view_depth)) {
+ 		fragOut0.rgb = color_in.rgb;
+ 	} else {
+-		float fog_dist = clamp(1 - pow(fog_density, view_depth - fog_start) , 0.0, 1.0);
++		float fog_dist = clamp(1.0 - pow(fog_density, view_depth - fog_start) , 0.0, 1.0);
+ 		vec3 finalFogColor = srgb_to_linear(fog_color);
+ 
+ 		fragOut0.rgb = mix(color_in.rgb, finalFogColor, fog_dist);
+diff --git a/code/def_files/data/effects/fxaa-f.sdr b/code/def_files/data/effects/fxaa-f.sdr
+index ae2b28e2ec6..feaca8f6b4a 100644
+--- a/code/def_files/data/effects/fxaa-f.sdr
++++ b/code/def_files/data/effects/fxaa-f.sdr
+@@ -1,3 +1,15 @@
++#ifdef GL_ES
++#ifdef GL_EXT_gpu_shader5
++	#extension GL_EXT_gpu_shader5 : enable
++	#define FXAA_GATHER4_ALPHA 1
++#endif
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
++
+ #define FXAA_EARLY_EXIT 1
+ #define FXAA_DISCARD 1
+ #define FXAA_FAST_PIXEL_OFFSET 1 // With OpenGL 3.2 we can always do this
+@@ -489,8 +501,12 @@ FxaaFloat4 FxaaPixelShader(
+ }
+ uniform sampler2D tex0;
+ in vec2 v_rcpFrame;
++#ifdef GL_ES
++in vec2 v_pos;
++#else
+ noperspective in vec2 v_pos;
+-out vec4 fragOut0;
++#endif
++layout(location=0)out vec4 fragOut0;
+ void main() {
+ 	fragOut0 = FxaaPixelShader(v_pos, tex0, v_rcpFrame, FXAA_QUALITY_SUBPIX, FXAA_QUALITY_EDGE_THRESHOLD, FXAA_QUALITY_EDGE_THRESHOLD_MIN);
+ }
+diff --git a/code/def_files/data/effects/fxaa-v.sdr b/code/def_files/data/effects/fxaa-v.sdr
+index 16aa5cc43e3..d5f31260cd9 100644
+--- a/code/def_files/data/effects/fxaa-v.sdr
++++ b/code/def_files/data/effects/fxaa-v.sdr
+@@ -1,8 +1,16 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++#endif
+ 
+ in vec4 vertPosition;
+ 
+ out vec2 v_rcpFrame;
++#ifdef GL_ES
++out vec2 v_pos;
++#else
+ noperspective out vec2 v_pos;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	float rt_w;
+diff --git a/code/def_files/data/effects/fxaapre-f.sdr b/code/def_files/data/effects/fxaapre-f.sdr
+index 5756a847433..bbf4931dd21 100644
+--- a/code/def_files/data/effects/fxaapre-f.sdr
++++ b/code/def_files/data/effects/fxaapre-f.sdr
+@@ -1,5 +1,11 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
++
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ uniform sampler2D tex;
+ void main() {
+ 	vec4 color = texture(tex, fragTexCoord.xy);
+diff --git a/code/def_files/data/effects/gamma-correct-f.sdr b/code/def_files/data/effects/gamma-correct-f.sdr
+index 8bf66ae8fa8..843829e1548 100644
+--- a/code/def_files/data/effects/gamma-correct-f.sdr
++++ b/code/def_files/data/effects/gamma-correct-f.sdr
+@@ -1,5 +1,10 @@
++#ifdef GL_ES
++precision highp float;
++precision highp sampler2D;
++#endif
++
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0)out vec4 fragOut0;
+ 
+ uniform sampler2D tex;
+ 
+diff --git a/code/def_files/data/effects/gamma.sdr b/code/def_files/data/effects/gamma.sdr
+index 93a7cb6c481..1e0b2fccfb5 100644
+--- a/code/def_files/data/effects/gamma.sdr
++++ b/code/def_files/data/effects/gamma.sdr
+@@ -1,3 +1,6 @@
++#ifdef GL_ES
++precision highp float;
++#endif
+ 
+ const float SRGB_GAMMA = 2.2;
+ const float SRGB_GAMMA_INVERSE = 1.0 / SRGB_GAMMA;
+diff --git a/code/def_files/data/effects/irrmap-f.sdr b/code/def_files/data/effects/irrmap-f.sdr
+index 4400ff1f0f6..e74c9c99017 100644
+--- a/code/def_files/data/effects/irrmap-f.sdr
++++ b/code/def_files/data/effects/irrmap-f.sdr
+@@ -1,5 +1,13 @@
+ //!#version 150
+-#include "gamma.sdr" //! #include "gamma.sdr"
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#endif
++
++#include "gamma.sdr"
+ #define PI 3.1415926535897932384626433832795
+ uniform samplerCube envmap;
+ 
+@@ -9,7 +17,7 @@ layout (std140) uniform genericData {
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ // Iteratively optimised points to give low discrepancy distribution on arbitrary hemisphere.
+ const vec3 points[128] = vec3[128](
+@@ -144,8 +152,8 @@ vec3( 0.7305,  0.6698,  0.1333)
+ );
+ 
+ void main() {
+-	float xpos = 2 * gl_FragCoord.x/16 - 1; // remap to (-1, 1)
+-	float ypos = 2 * gl_FragCoord.y/16 - 1;
++	float xpos = 2.0 * gl_FragCoord.x/16.0 - 1.0; // remap to (-1, 1)
++	float ypos = 2.0 * gl_FragCoord.y/16.0 - 1.0;
+ 	vec3 fragDir;
+ 	vec4 fragCol = vec4(0.0);
+ 
+@@ -181,5 +189,5 @@ void main() {
+ 		vec3 sampDir = points[i] + (aPdotD - PdotD) * fragDir;
+ 		fragCol += aPdotD * vec4(srgb_to_linear(texture(envmap, sampDir)).rgb, 1.0);
+ 	}
+-	fragOut0 = linear_to_srgb(PI * fragCol * (1.0/128));
++	fragOut0 = linear_to_srgb(PI * fragCol * (1.0/128.0));
+ }
+\ No newline at end of file
+diff --git a/code/def_files/data/effects/lighting.sdr b/code/def_files/data/effects/lighting.sdr
+index 799617b52eb..00ae3fb2fa0 100644
+--- a/code/def_files/data/effects/lighting.sdr
++++ b/code/def_files/data/effects/lighting.sdr
+@@ -8,7 +8,7 @@ const int LT_AMBIENT		= 4;		// Directionless ambient light
+ const float SPEC_FACTOR_NO_SPEC_MAP		= 0.1;
+ const float GLOW_MAP_INTENSITY			= 1.5;
+ const float GLOW_MAP_SRGB_MULTIPLIER	= 3.0;
+-const float PI = 3.14159f;
++const float PI = 3.14159265359;
+ 
+ 
+ vec3 FresnelSchlick(vec3 halfVec, vec3 view, vec3 specColor)
+@@ -57,7 +57,7 @@ vec3 ComputeGGX(vec3 specColor, vec3 diffColor, vec3 light, vec3 normal, vec3 ha
+ 
+ 
+ 
+-	vec3 specular = distribution * fresnel * geometry / (4*dotNV*dotNL + 0.0001);
++	vec3 specular = distribution * fresnel * geometry / (4.0*dotNV*dotNL + 0.0001);
+ 	
+ 	// Diffuse term - Lambertian, kD represents energy lost to specular reflection.
+ 	vec3 kD = vec3(1.0)-fresnel;
+@@ -70,7 +70,7 @@ vec3 ComputeGGX(vec3 specColor, vec3 diffColor, vec3 light, vec3 normal, vec3 ha
+ vec3 computeLighting(vec3 specColor, vec3 diffColor, vec3 light, vec3 normal, vec3 halfVec, vec3 view, float roughness, float fresnelFactor, float dotNL) 
+ {
+ 	#ifdef FLAG_LIGHT_MODEL_BLINN_PHONG
+-	return SpecularBlinnPhong(specColor, light, normal, halfVec, 32, fresnelFactor, dotNL);
++	return SpecularBlinnPhong(specColor, light, normal, halfVec, 32.0, fresnelFactor, dotNL);
+ 	#else
+ 	return ComputeGGX(specColor, diffColor, light, normal, halfVec, view, roughness, fresnelFactor, dotNL);
+ 	#endif
+diff --git a/code/def_files/data/effects/ls-f.sdr b/code/def_files/data/effects/ls-f.sdr
+index 037d47d71e1..46febdc91f1 100644
+--- a/code/def_files/data/effects/ls-f.sdr
++++ b/code/def_files/data/effects/ls-f.sdr
+@@ -1,7 +1,12 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D scene;
+ uniform sampler2D cockpit;
+diff --git a/code/def_files/data/effects/main-f.sdr b/code/def_files/data/effects/main-f.sdr
+index e5ed5de9c51..48713aa7876 100644
+--- a/code/def_files/data/effects/main-f.sdr
++++ b/code/def_files/data/effects/main-f.sdr
+@@ -1,4 +1,18 @@
+ //? #version 150
++#ifdef GL_ES
++#extension GL_EXT_clip_cull_distance: enable
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++precision highp sampler2DArrayShadow;
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
+ #include "shadows.sdr" //! #include "shadows.sdr"
+ #include "lighting.sdr" //! #include "lighting.sdr"
+ #include "gamma.sdr" //! #include "gamma.sdr"
+@@ -111,6 +125,10 @@ in VertexOutput {
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertIn;
+ 
+ #prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_DIFFUSE
+@@ -136,12 +154,11 @@ uniform sampler2DArray sMiscmap;
+ uniform sampler2DArrayShadow shadow_map;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 
+-out vec4 fragOut0;
+-
+-out vec4 fragOut1;
+-out vec4 fragOut2;
+-out vec4 fragOut3;
+-out vec4 fragOut4;
++layout(location=0)out vec4 fragOut0;
++layout(location=1)out vec4 fragOut1;
++layout(location=2)out vec4 fragOut2;
++layout(location=3)out vec4 fragOut3;
++layout(location=4)out vec4 fragOut4;
+ 
+ vec3 FresnelLazarovEnv(vec3 specColor, vec3 view, vec3 normal, float gloss)
+ {
+@@ -202,6 +219,10 @@ vec3 CalculateLighting(vec3 normal, vec3 diffuseMaterial, vec3 specularMaterial,
+ 
+ void main()
+ {
++	#ifndef USE_HW_CLIP_DISTANCE
++		if (vertIn.vClipDist < 0.0) discard;
++	#endif
++
+ 	vec3 eyeDir = vec3(normalize(-vertIn.position).xyz);
+ 	vec2 texCoord = vertIn.texCoord.xy;
+ 
+@@ -369,7 +390,7 @@ void main()
+ 		#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_DIFFUSE
+ 		// This code will only be used by the forward renderer so we apply the fog effect to both the emissive and the base
+ 		// color.
+-		float fogDensityFinal = clamp(1 - pow(fogDensity, vertIn.fogDist) , 0.0, 1.0);
++		float fogDensityFinal = clamp(1.0 - pow(fogDensity, vertIn.fogDist) , 0.0, 1.0);
+ 		baseColor.rgb = mix(emissiveColor.rgb + baseColor.rgb, finalFogColor, fogDensityFinal);
+ 		emissiveColor.rgb = vec3(0.0); // Zero the emissive color since it has already been added by the previous line
+ 		specColor.rgb *= fogDensityFinal;
+@@ -412,11 +433,11 @@ void main()
+ 		#prereplace IF_NOT_FLAG MODEL_SDR_FLAG_LIGHT
+ 			#prereplace IF_FLAG MODEL_SDR_FLAG_SPEC
+ 				baseColor.rgb += pow(1.0 - clamp(dot(eyeDir, normal), 0.0, 1.0), 5.0 * clamp(glossData, 0.01, 1.0)) * specColor.rgb;
+-				glossData = 0;
++				glossData = 0.0f;
+ 			#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_SPEC
+ 			// If there is no lighting then we copy the color data so far into the emissive.
+ 			emissiveColor.rgb += baseColor.rgb;
+-			aoFactors.x = 0;
++			aoFactors.x = 0.0f;
+ 		#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_LIGHT
+ 	#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_DEFERRED
+ 
+diff --git a/code/def_files/data/effects/main-g.sdr b/code/def_files/data/effects/main-g.sdr
+index 49cee6b0581..f36ff8c7214 100644
+--- a/code/def_files/data/effects/main-g.sdr
++++ b/code/def_files/data/effects/main-g.sdr
+@@ -1,4 +1,18 @@
++#ifdef GL_ES
++#extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++#else
+ #extension GL_ARB_gpu_shader5: enable
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
+ 
+ #conditional_include +"LARGE_SHADER" "main_large.sdr"
+ #conditional_include -"LARGE_SHADER" "main_small.sdr"
+@@ -100,6 +114,9 @@ in VertexOutput {
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertIn[];
+ 
+ out VertexOutput {
+@@ -117,6 +134,10 @@ out VertexOutput {
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertOut;
+ 
+ #ifdef MODEL_SDR_FLAG_THICK_OUTLINES
+@@ -166,8 +187,17 @@ out VertexOutput {
+                 #prereplace ENDIF_FLAG //MODEL_SDR_FLAG_SHADOWS
+ 
+ 				if (use_clip_plane) {
+-					gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++					#ifndef USE_HW_CLIP_DISTANCE
++						vertOut.vClipDist = vertIn[vert].vClipDist;
++					#else
++						gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++					#endif
++				} else {
++					#ifndef USE_HW_CLIP_DISTANCE
++						vertOut.vClipDist = 1.0;
++					#endif
+ 				}
++
+ 				EmitVertex();
+ 			}
+ 
+diff --git a/code/def_files/data/effects/main-v.sdr b/code/def_files/data/effects/main-v.sdr
+index ee59cec19f8..d1b8caad3b0 100644
+--- a/code/def_files/data/effects/main-v.sdr
++++ b/code/def_files/data/effects/main-v.sdr
+@@ -1,5 +1,21 @@
+ //? #version 150
++#ifdef GL_ES
++#extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp samplerCube;
++precision highp samplerBuffer;
++precision highp sampler2DArrayShadow;
++#else
+ #extension GL_ARB_gpu_shader5: enable
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
+ 
+ #include "shadows.sdr"
+ 
+@@ -118,6 +134,10 @@ out VertexOutput {
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
+ #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertOut;
+ 
+ #define TEXELS_PER_MATRIX 4
+@@ -181,11 +201,20 @@ void main()
+ 		}
+ 	#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_TRANSFORM
+ 
+-	if(use_clip_plane) {
+-		gl_ClipDistance[0] = dot(clip_equation, modelMatrix * orient * vertex);
+-	} else {
+-		gl_ClipDistance[0] = 1.0;
+-	}
++	#ifdef USE_HW_CLIP_DISTANCE
++		if (use_clip_plane) {
++			gl_ClipDistance[0] = dot(clip_equation, modelMatrix * orient * vertex);
++		} else {
++			gl_ClipDistance[0] = 1.0;
++		}
++	#else
++		if (use_clip_plane) {
++			vertOut.vClipDist = dot(clip_equation, modelMatrix * orient * vertex);
++		} else {
++			vertOut.vClipDist = 1.0;
++		}
++	#endif
++
+ 
+ 	vertOut.position = position;
+ 	vertOut.normal = normal;
+diff --git a/code/def_files/data/effects/msaa-f.sdr b/code/def_files/data/effects/msaa-f.sdr
+index 521834f6798..9fabdd794a9 100644
+--- a/code/def_files/data/effects/msaa-f.sdr
++++ b/code/def_files/data/effects/msaa-f.sdr
+@@ -1,12 +1,19 @@
+ #include "z-compress.sdr"
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++precision highp sampler2DMS;
++#endif
+ 
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
+-out vec4 fragOut1;
+-out vec4 fragOut2;
+-out vec4 fragOut3;
+-out vec4 fragOut4;
+-out vec4 fragOut5;
++layout(location=0)out vec4 fragOut0;
++layout(location=1)out vec4 fragOut1;
++layout(location=2)out vec4 fragOut2;
++layout(location=3)out vec4 fragOut3;
++layout(location=4)out vec4 fragOut4;
++layout(location=5)out vec4 fragOut5;
+ 
+ uniform sampler2DMS texColor;
+ uniform sampler2DMS texPos;
+diff --git a/code/def_files/data/effects/nanovg-f.sdr b/code/def_files/data/effects/nanovg-f.sdr
+index 9433077661b..8bc33c58013 100644
+--- a/code/def_files/data/effects/nanovg-f.sdr
++++ b/code/def_files/data/effects/nanovg-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ // Enabled at all times but the define is kept here in case this should be configurable in the future
+ #define EDGE_AA
+diff --git a/code/def_files/data/effects/nanovg-v.sdr b/code/def_files/data/effects/nanovg-v.sdr
+index 48b5cbb9a0e..a1f619e5e13 100644
+--- a/code/def_files/data/effects/nanovg-v.sdr
++++ b/code/def_files/data/effects/nanovg-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout(std140) uniform NanoVGUniformData {
+     mat3 scissorMat;
+diff --git a/code/def_files/data/effects/normals.sdr b/code/def_files/data/effects/normals.sdr
+index 8123bd13747..185dc5cbff2 100644
+--- a/code/def_files/data/effects/normals.sdr
++++ b/code/def_files/data/effects/normals.sdr
+@@ -7,6 +7,6 @@
+ vec3 unpackNormal(vec2 normal_sample) {
+ 	vec3 normal;
+ 	normal.xy = normal_sample * 2.0 - 1.0;
+-	normal.z = sqrt(1 - normal_sample.x * normal_sample.x - normal_sample.y * normal_sample.y);
++	normal.z = sqrt(1.0 - normal_sample.x * normal_sample.x - normal_sample.y * normal_sample.y);
+ 	return normal;
+ }
+diff --git a/code/def_files/data/effects/passthrough-f.sdr b/code/def_files/data/effects/passthrough-f.sdr
+index 6e3134e068e..3b06379b9bd 100644
+--- a/code/def_files/data/effects/passthrough-f.sdr
++++ b/code/def_files/data/effects/passthrough-f.sdr
+@@ -1,9 +1,14 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++#endif
+ 
+ #include "gamma.sdr"
+ 
+ in vec4 fragTexCoord;
+ in vec4 fragColor;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D baseMap;
+ 
+diff --git a/code/def_files/data/effects/post-f.sdr b/code/def_files/data/effects/post-f.sdr
+index 08eafe5899e..cb1b1bbaad7 100644
+--- a/code/def_files/data/effects/post-f.sdr
++++ b/code/def_files/data/effects/post-f.sdr
+@@ -1,6 +1,13 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D tex;
+ uniform sampler2D depth_tex;
+diff --git a/code/def_files/data/effects/rocketui-f.sdr b/code/def_files/data/effects/rocketui-f.sdr
+index bffff254716..3c46341a0c3 100644
+--- a/code/def_files/data/effects/rocketui-f.sdr
++++ b/code/def_files/data/effects/rocketui-f.sdr
+@@ -1,9 +1,15 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ in vec2 fragTexCoord;
+ in vec4 fragColor;
+ in vec2 fragScreenPosition;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2DArray baseMap;
+ 
+diff --git a/code/def_files/data/effects/rocketui-v.sdr b/code/def_files/data/effects/rocketui-v.sdr
+index dd62c939226..d6e46f192ec 100644
+--- a/code/def_files/data/effects/rocketui-v.sdr
++++ b/code/def_files/data/effects/rocketui-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ in vec2 vertPosition;
+ in vec4 vertColor;
+diff --git a/code/def_files/data/effects/shadow_map-g.sdr b/code/def_files/data/effects/shadow_map-g.sdr
+index 0de37ea486c..f85c63a79d2 100644
+--- a/code/def_files/data/effects/shadow_map-g.sdr
++++ b/code/def_files/data/effects/shadow_map-g.sdr
+@@ -1,9 +1,20 @@
+ //? #version 150
++#ifdef GL_ES
++#extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
++precision highp float;
++precision highp int;
++#else
+ #extension GL_ARB_gpu_shader5: enable
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
+ 
+ layout (triangles) in;
+ layout (triangle_strip, max_vertices = 3) out;
+-#ifdef GL_ARB_gpu_shader5
++#if defined(GL_ARB_gpu_shader5) || defined(GL_EXT_gpu_shader5)
+ layout(invocations = NUM_SHADOW_CASCADES) in;
+ #endif
+ 
+@@ -18,16 +29,19 @@ layout (std140) uniform shadowCascadeParams {
+ };
+ 
+ in VertexOutput {
+-#if !defined(GL_ARB_gpu_shader5)
++#if !defined(GL_ARB_gpu_shader5) && !defined(GL_EXT_gpu_shader5)
+     float instance;
+ #endif
+ 	float clipModel;
+ 	vec3 normal;
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertIn[];
+ 
+ void main(void)
+ {
+-#ifdef GL_ARB_gpu_shader5
++#if defined(GL_ARB_gpu_shader5) || defined(GL_EXT_gpu_shader5)
+     if (gl_InvocationID >= cascade_count) return;
+     int cascade_id = cascade_offset + gl_InvocationID;
+ #else
+@@ -43,7 +57,12 @@ void main(void)
+ 		}
+ 
+ 		gl_Layer = cascade_id;
+-		gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++		
++		#ifndef USE_HW_CLIP_DISTANCE
++			vertOut.vClipDist = vertIn[vert].vClipDist;
++		#else
++			gl_ClipDistance[0] = gl_in[vert].gl_ClipDistance[0];
++		#endif
+ 
+ 		EmitVertex();
+ 	}
+diff --git a/code/def_files/data/effects/shadow_map-v.sdr b/code/def_files/data/effects/shadow_map-v.sdr
+index 3a804f0046d..ab981ba446c 100644
+--- a/code/def_files/data/effects/shadow_map-v.sdr
++++ b/code/def_files/data/effects/shadow_map-v.sdr
+@@ -1,9 +1,20 @@
+ //? #version 150
++#ifdef GL_ES
++#extension GL_EXT_gpu_shader5: enable
++#extension GL_EXT_clip_cull_distance: enable
++precision highp float;
++precision highp int;
++precision highp samplerBuffer;
++#else
+ #extension GL_ARB_gpu_shader5: enable
+-
+ #ifndef GEOMETRY_FALLBACK
+ #extension GL_ARB_shader_viewport_layer_array : enable
+ #endif
++#endif
++
++#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
+ 
+ in vec4 vertPosition;
+ in vec4 vertTexCoord;
+@@ -33,11 +44,14 @@ uniform samplerBuffer transform_tex;
+ 
+ #ifdef GEOMETRY_FALLBACK
+ out VertexOutput {
+-#if !defined(GL_ARB_gpu_shader5)
++#if !defined(GL_ARB_gpu_shader5) && !defined(GL_EXT_gpu_shader5)
+ 	float instance;
+ #endif
+ 	float clipModel;
+ 	vec3 normal;
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertOut;
+ #endif
+ 
+@@ -67,7 +81,7 @@ void main()
+ 	normal = normalize(mat3(modelViewMatrix) * mat3(orient) * vertNormal);
+ 	position = modelViewMatrix * orient * vertex;
+ 
+-#if !defined(GL_ARB_gpu_shader5)
++#if !defined(GL_ARB_gpu_shader5) && !defined(GL_EXT_gpu_shader5)
+  #ifdef APPLE
+ 	vertOut.instance = float(gl_InstanceIDARB);
+  #else
+@@ -86,11 +100,19 @@ void main()
+         gl_Position = position;
+     }
+ 
++#ifdef USE_HW_CLIP_DISTANCE
+ 	if (use_clip_plane) {
+ 		gl_ClipDistance[0] = dot(clip_equation, modelMatrix * orient * vertex);
+ 	} else {
+ 		gl_ClipDistance[0] = 1.0;
+ 	}
++#else
++	if (use_clip_plane) {
++		vertOut.vClipDist = dot(clip_equation, modelMatrix * orient * vertex);
++	} else {
++		vertOut.vClipDist = 1.0;
++	}
++#endif
+ 
+ #ifdef GEOMETRY_FALLBACK
+     vertOut.normal = normal;
+diff --git a/code/def_files/data/effects/shadows.sdr b/code/def_files/data/effects/shadows.sdr
+index a9437d87976..450f126dc6a 100644
+--- a/code/def_files/data/effects/shadows.sdr
++++ b/code/def_files/data/effects/shadows.sdr
+@@ -48,7 +48,7 @@ float samplePoissonPCSS(sampler2DArrayShadow shadow_map, vec4 shadowUV, float ma
+ 	for (int i=0; i<SAMPLES_PCSS; i++) {
+ 	    vec4 uv = shadowUV;
+ 	    uv.xy += poissonDisc[i] * maxUVOffset;
+-		visibility += texture(shadow_map, uv).r;
++		visibility += texture(shadow_map, uv);
+ 	}
+ 	return visibility * (1.0f/float(SAMPLES_PCSS));
+ }
+diff --git a/code/def_files/data/effects/shield-impact-f.sdr b/code/def_files/data/effects/shield-impact-f.sdr
+index d5214d18f62..61eee8e24ab 100644
+--- a/code/def_files/data/effects/shield-impact-f.sdr
++++ b/code/def_files/data/effects/shield-impact-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ #include "gamma.sdr"
+ 
+@@ -6,7 +12,7 @@ const float EMISSIVE_GAIN = 2.0;
+ in vec4 fragImpactUV;
+ in float fragNormOffset;
+ 
+-out vec4 fragOut0;
++layout (location=0) out vec4 fragOut0;
+ 
+ uniform sampler2DArray shieldMap;
+ 
+diff --git a/code/def_files/data/effects/shield-impact-v.sdr b/code/def_files/data/effects/shield-impact-v.sdr
+index a1260a63389..8cf6cb41957 100644
+--- a/code/def_files/data/effects/shield-impact-v.sdr
++++ b/code/def_files/data/effects/shield-impact-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ in vec4 vertPosition;
+ in vec3 vertNormal;
+diff --git a/code/def_files/data/effects/smaa-blend-f.sdr b/code/def_files/data/effects/smaa-blend-f.sdr
+index 1bd725fd8ba..b19b49f7006 100644
+--- a/code/def_files/data/effects/smaa-blend-f.sdr
++++ b/code/def_files/data/effects/smaa-blend-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+@@ -14,7 +20,7 @@ in vec2 fragTexCoord;
+ in vec2 fragPixcoord;
+ in vec4 fragOffset[3];
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D edgesTex;
+ uniform sampler2D areaTex;
+diff --git a/code/def_files/data/effects/smaa-blend-v.sdr b/code/def_files/data/effects/smaa-blend-v.sdr
+index f4cc787c6a5..ba939b391e7 100644
+--- a/code/def_files/data/effects/smaa-blend-v.sdr
++++ b/code/def_files/data/effects/smaa-blend-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+diff --git a/code/def_files/data/effects/smaa-edge-f.sdr b/code/def_files/data/effects/smaa-edge-f.sdr
+index 367c8501960..e77c0541feb 100644
+--- a/code/def_files/data/effects/smaa-edge-f.sdr
++++ b/code/def_files/data/effects/smaa-edge-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+@@ -13,7 +19,7 @@ layout (std140) uniform genericData {
+ in vec2 fragTexCoord;
+ in vec4 fragOffset[3];
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D colorTex;
+ 
+diff --git a/code/def_files/data/effects/smaa-edge-v.sdr b/code/def_files/data/effects/smaa-edge-v.sdr
+index 8a5e93d4492..7055ee7b1b4 100644
+--- a/code/def_files/data/effects/smaa-edge-v.sdr
++++ b/code/def_files/data/effects/smaa-edge-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+diff --git a/code/def_files/data/effects/smaa-neighbour-f.sdr b/code/def_files/data/effects/smaa-neighbour-f.sdr
+index dc3d76ae701..c5e7d0725a5 100644
+--- a/code/def_files/data/effects/smaa-neighbour-f.sdr
++++ b/code/def_files/data/effects/smaa-neighbour-f.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+@@ -13,7 +19,7 @@ layout (std140) uniform genericData {
+ in vec2 fragTexCoord;
+ in vec4 fragOffset;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ uniform sampler2D colorTex;
+ uniform sampler2D blendTex;
+diff --git a/code/def_files/data/effects/smaa-neighbour-v.sdr b/code/def_files/data/effects/smaa-neighbour-v.sdr
+index fa1601cdba7..d4773f2cc58 100644
+--- a/code/def_files/data/effects/smaa-neighbour-v.sdr
++++ b/code/def_files/data/effects/smaa-neighbour-v.sdr
+@@ -1,3 +1,9 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ layout (std140) uniform genericData {
+ 	vec2 smaa_rt_metrics;
+diff --git a/code/def_files/data/effects/tonemapping-f.sdr b/code/def_files/data/effects/tonemapping-f.sdr
+index 8011d0cdfe9..b89314687d8 100644
+--- a/code/def_files/data/effects/tonemapping-f.sdr
++++ b/code/def_files/data/effects/tonemapping-f.sdr
+@@ -1,8 +1,14 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ #include "gamma.sdr"
+ 
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ uniform sampler2D tex;
+ 
+ layout (std140) uniform genericData {
+diff --git a/code/def_files/data/effects/video-f.sdr b/code/def_files/data/effects/video-f.sdr
+index 4e4fab88952..eda8fd60ef9 100644
+--- a/code/def_files/data/effects/video-f.sdr
++++ b/code/def_files/data/effects/video-f.sdr
+@@ -1,5 +1,12 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
++
+ in vec4 fragTexCoord;
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ uniform sampler2DArray ytex;
+ uniform sampler2DArray utex;
+ uniform sampler2DArray vtex;
+diff --git a/code/def_files/data/effects/volumetric-f.sdr b/code/def_files/data/effects/volumetric-f.sdr
+index d511fea68a9..cda47c7c075 100644
+--- a/code/def_files/data/effects/volumetric-f.sdr
++++ b/code/def_files/data/effects/volumetric-f.sdr
+@@ -1,7 +1,13 @@
++#ifdef GL_ES
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++#endif
+ 
+ in vec4 fragTexCoord;
+ 
+-out vec4 fragOut0;
++layout(location=0) out vec4 fragOut0;
+ 
+ layout (binding = 0) uniform sampler2D composite;
+ layout (binding = 1) uniform sampler2D emissive;
+diff --git a/code/graphics/opengl/es_compatibility.h b/code/graphics/opengl/es_compatibility.h
+index 6b78398cf0a..dd477dae544 100644
+--- a/code/graphics/opengl/es_compatibility.h
++++ b/code/graphics/opengl/es_compatibility.h
+@@ -31,6 +31,7 @@
+ #define GL_CLAMP_VERTEX_COLOR					0x891A
+ #define GL_CLAMP_FRAGMENT_COLOR					0x891B
+ #define GL_FIXED_ONLY							0x891D
++#define GLAD_GL_ARB_shader_viewport_layer_array 0 // Disabled, no gl_layer in vertex shader //0x8DAE
+ 
+ //Enums Redefinitions
+ #define GL_CLIP_DISTANCE0						GL_CLIP_DISTANCE0_EXT // GL_EXT_clip_cull_distance
+@@ -47,6 +48,7 @@
+ #define GLAD_GL_ARB_texture_storage				GL_TRUE // ES 3.2
+ #define GLAD_GL_ARB_draw_buffers_blend			GL_TRUE // ES 3.2 (glBlendFunci and glBlendEquationi)
+ #define GLAD_GL_ARB_vertex_attrib_binding		GL_TRUE // ES 3.1
++#define GL_DEPTH_CLAMP							GL_DEPTH_CLAMP_EXT
+ 
+ //Functions Redefinitions
+ #define glBlendFunciARB					glBlendFunci // ES 3.2
+@@ -333,11 +335,6 @@ inline void glDrawBuffer(GLenum buf)
+ 	}
+ }
+ 
+-// does not exist on ES, ES uses layout(location=) directly on shader
+-// Notes: 
+-// -This function is not required to run.
+-#define glBindFragDataLocation(program, colorNumber, name) ((void)0)
+-
+ // glPolygonMode() is not supported on ES,  no wireframe, GL_FILL is default, GL_POINTS, and GL_LINES needs an alternative path
+ // Notes: 
+ // -This function is not required to run.
+@@ -353,6 +350,7 @@ static inline void glQueryCounter(GLuint id, GLenum target)
+ 	#else
+ 		(void)id;
+ 	#endif
++		(void)target;
+ }
+ 
+ // glGetCompressedTexImage not present on GLES and no equivalent
+diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
+index 06a5452f3b2..cd18836a569 100644
+--- a/code/graphics/opengl/gropengl.cpp
++++ b/code/graphics/opengl/gropengl.cpp
+@@ -1408,7 +1408,9 @@ bool gr_opengl_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps)
+ 			"Deferred lightning is enabled in settings but the gpu does not support the minimum of 6 draw buffers. "
+ 			"This will result in rendering errors.");
+ 	}
+-
++	
++	mprintf(("  Depth Clamp support : %s\n", GLAD_GL_EXT_depth_clamp ? NOX("YES") : NOX("NO")));
++	mprintf(("  HW Cull distance support : %s\n", GLAD_GL_EXT_clip_cull_distance ? NOX("YES") : NOX("NO")));
+ 	mprintf(("  Precompiled shaders support : %s\n", GLAD_GL_OES_get_program_binary ? NOX("YES") : NOX("NO")));
+ 	mprintf(("  Immutable buffer storage support : %s\n", GLAD_GL_EXT_buffer_storage ? NOX("YES") : NOX("NO")));
+ 	mprintf(("  BGRA8888 format support: %s\n", GLAD_GL_EXT_texture_format_BGRA8888 ? NOX("YES") : NOX("NO")));
+diff --git a/code/graphics/opengl/gropenglshader.cpp b/code/graphics/opengl/gropenglshader.cpp
+index 347f89cc5bd..920f5eed65a 100644
+--- a/code/graphics/opengl/gropenglshader.cpp
++++ b/code/graphics/opengl/gropenglshader.cpp
+@@ -139,8 +139,13 @@ static opengl_shader_type_t GL_shader_types[] = {
+ 	{ SDR_TYPE_BATCHED_BITMAP, "batched-v.sdr", "batched-f.sdr", nullptr,
+ 		{ opengl_vert_attrib::POSITION, opengl_vert_attrib::TEXCOORD, opengl_vert_attrib::COLOR }, "Batched bitmaps", false },
+ 
+-	{ SDR_TYPE_DEFAULT_MATERIAL, "default-material.vert.spv.glsl", "default-material.frag.spv.glsl", nullptr,
+-		{ opengl_vert_attrib::POSITION, opengl_vert_attrib::TEXCOORD, opengl_vert_attrib::COLOR }, "Default material", true },
++#ifdef USE_OPENGL_ES
++    { SDR_TYPE_DEFAULT_MATERIAL, "default-material.vert.spv.gles.glsl", "default-material.frag.spv.gles.glsl", nullptr,
++        { opengl_vert_attrib::POSITION, opengl_vert_attrib::TEXCOORD, opengl_vert_attrib::COLOR }, "Default material", true },
++#else
++    { SDR_TYPE_DEFAULT_MATERIAL, "default-material.vert.spv.glsl", "default-material.frag.spv.glsl", nullptr,
++        { opengl_vert_attrib::POSITION, opengl_vert_attrib::TEXCOORD, opengl_vert_attrib::COLOR }, "Default material", true },
++#endif
+ 
+ 	{ SDR_TYPE_NANOVG, "nanovg-v.sdr", "nanovg-f.sdr", nullptr,
+ 		{ opengl_vert_attrib::POSITION, opengl_vert_attrib::TEXCOORD }, "NanoVG shader", false },
+@@ -876,13 +881,6 @@ void opengl_compile_shader_actual(shader_type sdr, const uint &flags, opengl_sha
+ 				glBindAttribLocation(program->getShaderHandle(), (GLint)i, GL_vertex_attrib_info[i].name.c_str());
+ 			}
+ 
+-			// bind fragment data locations before we link the shader
+-			glBindFragDataLocation(program->getShaderHandle(), 0, "fragOut0");
+-			glBindFragDataLocation(program->getShaderHandle(), 1, "fragOut1");
+-			glBindFragDataLocation(program->getShaderHandle(), 2, "fragOut2");
+-			glBindFragDataLocation(program->getShaderHandle(), 3, "fragOut3");
+-			glBindFragDataLocation(program->getShaderHandle(), 4, "fragOut4");
+-
+ 			if (do_shader_caching()) {
+ 				// Enable shader caching
+ 				glProgramParameteri(program->getShaderHandle(), GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+diff --git a/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl b/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
+new file mode 100644
+index 00000000000..eaa4710f2c7
+--- /dev/null
++++ b/code/graphics/shaders/compiled/default-material.frag.spv.gles.glsl
+@@ -0,0 +1,66 @@
++#version 320 es
++#extension GL_EXT_clip_cull_distance : enable
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++
++#if defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
++layout(std140) uniform genericData
++{
++    mat4 modelMatrix;
++    vec4 color;
++    vec4 clipEquation;
++    int baseMapIndex;
++    int alphaTexture;
++    int noTexturing;
++    int srgb;
++    float intensity;
++    float alphaThreshold;
++    uint clipEnabled;
++} _39;
++
++uniform sampler2DArray baseMap;
++#ifndef USE_HW_CLIP_DISTANCE
++in highp float vClipDist;
++#endif
++in vec4 fragTexCoord;
++in vec4 fragColor;
++layout (location=0) out vec4 fragOut0;
++
++void main()
++{
++#ifndef USE_HW_CLIP_DISTANCE
++	if (_39.clipEnabled != 0u && vClipDist < 0.0) {
++		discard;
++	}
++#endif
++    vec4 _48 = texture(baseMap, vec3(fragTexCoord.xy, float(_39.baseMapIndex)));
++    if (_39.alphaThreshold > _48.w)
++    {
++        discard;
++    }
++    bool _66 = _39.srgb == 1;
++    vec3 _146;
++    if (_66)
++    {
++        _146 = pow(_48.xyz, vec3(2.2000000476837158203125));
++    }
++    else
++    {
++        _146 = _48.xyz;
++    }
++    vec4 _148;
++    if (_66)
++    {
++        _148 = vec4(pow(fragColor.xyz, vec3(2.2000000476837158203125)), fragColor.w);
++    }
++    else
++    {
++        _148 = fragColor;
++    }
++    fragOut0 = mix(mix(vec4(_146.x, _146.y, _146.z, _48.w) * _148, vec4(_148.xyz, _146.x * _148.w), vec4(float(_39.alphaTexture))), _148, vec4(float(_39.noTexturing))) * _39.intensity;
++}
+diff --git a/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl b/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
+new file mode 100644
+index 00000000000..aa17641dc11
+--- /dev/null
++++ b/code/graphics/shaders/compiled/default-material.vert.spv.gles.glsl
+@@ -0,0 +1,52 @@
++#version 320 es
++#extension GL_EXT_clip_cull_distance : enable
++precision highp float;
++precision highp int;
++precision highp sampler2D;
++precision highp sampler2DArray;
++
++#if defined(GL_EXT_clip_cull_distance)
++#define USE_HW_CLIP_DISTANCE
++#endif
++
++layout(std140) uniform genericData
++{
++    mat4 modelMatrix;
++    vec4 color;
++    vec4 clipEquation;
++    int baseMapIndex;
++    int alphaTexture;
++    int noTexturing;
++    int srgb;
++    float intensity;
++    float alphaThreshold;
++    uint clipEnabled;
++} _22;
++
++layout(std140) uniform matrixData
++{
++    mat4 modelViewMatrix;
++    mat4 projMatrix;
++} _36;
++
++out vec4 fragTexCoord;
++in vec4 vertTexCoord;
++out vec4 fragColor;
++in vec4 vertColor;
++in vec4 vertPosition;
++#ifndef USE_HW_CLIP_DISTANCE
++out float vClipDist;
++#endif
++
++void main()
++{
++    fragTexCoord = vertTexCoord;
++    fragColor = vertColor * _22.color;
++    gl_Position = (_36.projMatrix * _36.modelViewMatrix) * vertPosition;
++	float d = dot(_22.clipEquation, _22.modelMatrix * vertPosition);
++#ifdef USE_HW_CLIP_DISTANCE
++	gl_ClipDistance[0] = (_22.clipEnabled != 0u) ? d : 1.0;
++#else
++	vClipDist = (_22.clipEnabled != 0u) ? d : 1.0;
++#endif
++}
+diff --git a/code/shaders.cmake b/code/shaders.cmake
+index 4c7763a2e62..09a7946c3db 100644
+--- a/code/shaders.cmake
++++ b/code/shaders.cmake
+@@ -64,6 +64,17 @@ foreach (_shader ${SHADERS})
+ 			)
+ 
+ 		target_embed_files(code FILES "${_glslOutput}" RELATIVE_TO "${_shaderOutputDir}" PATH_TYPE_PREFIX "data/effects")
++		
++		#GLES default-material shaders
++		set(_glesGlslOutputs
++			"${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled/default-material.vert.spv.gles.glsl"
++			"${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled/default-material.frag.spv.gles.glsl"
++		)
++		target_embed_files(code FILES ${_glesGlslOutputs}
++			RELATIVE_TO "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled"
++			PATH_TYPE_PREFIX "data/effects")
++		target_sources(code PRIVATE ${_glesGlslOutputs})
++		
+ 	else()
+ 		target_embed_files(code FILES "${_spirvFile}" RELATIVE_TO "${_shaderOutputDir}" PATH_TYPE_PREFIX "data/effects")
+ 
+@@ -73,6 +84,17 @@ foreach (_shader ${SHADERS})
+ 		list(APPEND _structHeaderList "${_structOutput}")
+ 
+ 		target_embed_files(code FILES "${_glslOutput}" RELATIVE_TO "${_shaderOutputDir}" PATH_TYPE_PREFIX "data/effects")
++		
++		#GLES default-material shaders
++		set(_glesGlslOutputs
++			"${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled/default-material.vert.spv.gles.glsl"
++			"${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled/default-material.frag.spv.gles.glsl"
++		)
++		target_embed_files(code FILES ${_glesGlslOutputs}
++			RELATIVE_TO "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders/compiled"
++			PATH_TYPE_PREFIX "data/effects")
++		target_sources(code PRIVATE ${_glesGlslOutputs})
++		
+ 	endif()
+ endforeach ()
+ 
+diff --git a/lib/opengl/gl/glad_es/include/glad/glad.h b/lib/opengl/gl/glad_es/include/glad/glad.h
+index 550c4ad13bb..5f5cdf5d548 100644
+--- a/lib/opengl/gl/glad_es/include/glad/glad.h
++++ b/lib/opengl/gl/glad_es/include/glad/glad.h
+@@ -1,6 +1,6 @@
+ /*
+ 
+-    OpenGL ES loader generated by glad 0.1.36 on Wed Aug 27 15:16:54 2025.
++    OpenGL ES loader generated by glad 0.1.36 on Sat Jul  4 19:49:32 2026.
+ 
+     Language/Generator: C/C++
+     Specification: gl
+@@ -10,6 +10,7 @@
+         GL_EXT_buffer_storage,
+         GL_EXT_clip_cull_distance,
+         GL_EXT_color_buffer_float,
++        GL_EXT_depth_clamp,
+         GL_EXT_disjoint_timer_query,
+         GL_EXT_gpu_shader5,
+         GL_EXT_multisampled_render_to_texture,
+@@ -27,9 +28,9 @@
+     Reproducible: False
+ 
+     Commandline:
+-        --profile="core" --api="gles2=3.2" --generator="c" --spec="gl" --extensions="GL_EXT_buffer_storage,GL_EXT_clip_cull_distance,GL_EXT_color_buffer_float,GL_EXT_disjoint_timer_query,GL_EXT_gpu_shader5,GL_EXT_multisampled_render_to_texture,GL_EXT_multisampled_render_to_texture2,GL_EXT_texture_compression_bptc,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_format_BGRA8888,GL_KHR_debug,GL_KHR_texture_compression_astc_ldr,GL_OES_get_program_binary"
++        --profile="core" --api="gles2=3.2" --generator="c" --spec="gl" --extensions="GL_EXT_buffer_storage,GL_EXT_clip_cull_distance,GL_EXT_color_buffer_float,GL_EXT_depth_clamp,GL_EXT_disjoint_timer_query,GL_EXT_gpu_shader5,GL_EXT_multisampled_render_to_texture,GL_EXT_multisampled_render_to_texture2,GL_EXT_texture_compression_bptc,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_format_BGRA8888,GL_KHR_debug,GL_KHR_texture_compression_astc_ldr,GL_OES_get_program_binary"
+     Online:
+-        https://glad.dav1d.de/#profile=core&language=c&specification=gl&loader=on&api=gles2%3D3.2&extensions=GL_EXT_buffer_storage&extensions=GL_EXT_clip_cull_distance&extensions=GL_EXT_color_buffer_float&extensions=GL_EXT_disjoint_timer_query&extensions=GL_EXT_gpu_shader5&extensions=GL_EXT_multisampled_render_to_texture&extensions=GL_EXT_multisampled_render_to_texture2&extensions=GL_EXT_texture_compression_bptc&extensions=GL_EXT_texture_compression_s3tc&extensions=GL_EXT_texture_filter_anisotropic&extensions=GL_EXT_texture_format_BGRA8888&extensions=GL_KHR_debug&extensions=GL_KHR_texture_compression_astc_ldr&extensions=GL_OES_get_program_binary
++        https://glad.dav1d.de/#profile=core&language=c&specification=gl&loader=on&api=gles2%3D3.2&extensions=GL_EXT_buffer_storage&extensions=GL_EXT_clip_cull_distance&extensions=GL_EXT_color_buffer_float&extensions=GL_EXT_depth_clamp&extensions=GL_EXT_disjoint_timer_query&extensions=GL_EXT_gpu_shader5&extensions=GL_EXT_multisampled_render_to_texture&extensions=GL_EXT_multisampled_render_to_texture2&extensions=GL_EXT_texture_compression_bptc&extensions=GL_EXT_texture_compression_s3tc&extensions=GL_EXT_texture_filter_anisotropic&extensions=GL_EXT_texture_format_BGRA8888&extensions=GL_KHR_debug&extensions=GL_KHR_texture_compression_astc_ldr&extensions=GL_OES_get_program_binary
+ */
+ 
+ 
+@@ -2257,6 +2258,7 @@ GLAPI PFNGLTEXSTORAGE3DMULTISAMPLEPROC glad_glTexStorage3DMultisample;
+ #define GL_CLIP_DISTANCE5_EXT 0x3005
+ #define GL_CLIP_DISTANCE6_EXT 0x3006
+ #define GL_CLIP_DISTANCE7_EXT 0x3007
++#define GL_DEPTH_CLAMP_EXT 0x864F
+ #define GL_QUERY_COUNTER_BITS_EXT 0x8864
+ #define GL_CURRENT_QUERY_EXT 0x8865
+ #define GL_QUERY_RESULT_EXT 0x8866
+@@ -2366,6 +2368,10 @@ GLAPI int GLAD_GL_EXT_clip_cull_distance;
+ #define GL_EXT_color_buffer_float 1
+ GLAPI int GLAD_GL_EXT_color_buffer_float;
+ #endif
++#ifndef GL_EXT_depth_clamp
++#define GL_EXT_depth_clamp 1
++GLAPI int GLAD_GL_EXT_depth_clamp;
++#endif
+ #ifndef GL_EXT_disjoint_timer_query
+ #define GL_EXT_disjoint_timer_query 1
+ GLAPI int GLAD_GL_EXT_disjoint_timer_query;
+diff --git a/lib/opengl/gl/glad_es/src/glad.c b/lib/opengl/gl/glad_es/src/glad.c
+index e7bae0f7860..df24c8490ef 100644
+--- a/lib/opengl/gl/glad_es/src/glad.c
++++ b/lib/opengl/gl/glad_es/src/glad.c
+@@ -1,6 +1,6 @@
+ /*
+ 
+-    OpenGL ES loader generated by glad 0.1.36 on Wed Aug 27 15:16:54 2025.
++    OpenGL ES loader generated by glad 0.1.36 on Sat Jul  4 19:49:32 2026.
+ 
+     Language/Generator: C/C++
+     Specification: gl
+@@ -10,6 +10,7 @@
+         GL_EXT_buffer_storage,
+         GL_EXT_clip_cull_distance,
+         GL_EXT_color_buffer_float,
++        GL_EXT_depth_clamp,
+         GL_EXT_disjoint_timer_query,
+         GL_EXT_gpu_shader5,
+         GL_EXT_multisampled_render_to_texture,
+@@ -27,9 +28,9 @@
+     Reproducible: False
+ 
+     Commandline:
+-        --profile="core" --api="gles2=3.2" --generator="c" --spec="gl" --extensions="GL_EXT_buffer_storage,GL_EXT_clip_cull_distance,GL_EXT_color_buffer_float,GL_EXT_disjoint_timer_query,GL_EXT_gpu_shader5,GL_EXT_multisampled_render_to_texture,GL_EXT_multisampled_render_to_texture2,GL_EXT_texture_compression_bptc,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_format_BGRA8888,GL_KHR_debug,GL_KHR_texture_compression_astc_ldr,GL_OES_get_program_binary"
++        --profile="core" --api="gles2=3.2" --generator="c" --spec="gl" --extensions="GL_EXT_buffer_storage,GL_EXT_clip_cull_distance,GL_EXT_color_buffer_float,GL_EXT_depth_clamp,GL_EXT_disjoint_timer_query,GL_EXT_gpu_shader5,GL_EXT_multisampled_render_to_texture,GL_EXT_multisampled_render_to_texture2,GL_EXT_texture_compression_bptc,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_format_BGRA8888,GL_KHR_debug,GL_KHR_texture_compression_astc_ldr,GL_OES_get_program_binary"
+     Online:
+-        https://glad.dav1d.de/#profile=core&language=c&specification=gl&loader=on&api=gles2%3D3.2&extensions=GL_EXT_buffer_storage&extensions=GL_EXT_clip_cull_distance&extensions=GL_EXT_color_buffer_float&extensions=GL_EXT_disjoint_timer_query&extensions=GL_EXT_gpu_shader5&extensions=GL_EXT_multisampled_render_to_texture&extensions=GL_EXT_multisampled_render_to_texture2&extensions=GL_EXT_texture_compression_bptc&extensions=GL_EXT_texture_compression_s3tc&extensions=GL_EXT_texture_filter_anisotropic&extensions=GL_EXT_texture_format_BGRA8888&extensions=GL_KHR_debug&extensions=GL_KHR_texture_compression_astc_ldr&extensions=GL_OES_get_program_binary
++        https://glad.dav1d.de/#profile=core&language=c&specification=gl&loader=on&api=gles2%3D3.2&extensions=GL_EXT_buffer_storage&extensions=GL_EXT_clip_cull_distance&extensions=GL_EXT_color_buffer_float&extensions=GL_EXT_depth_clamp&extensions=GL_EXT_disjoint_timer_query&extensions=GL_EXT_gpu_shader5&extensions=GL_EXT_multisampled_render_to_texture&extensions=GL_EXT_multisampled_render_to_texture2&extensions=GL_EXT_texture_compression_bptc&extensions=GL_EXT_texture_compression_s3tc&extensions=GL_EXT_texture_filter_anisotropic&extensions=GL_EXT_texture_format_BGRA8888&extensions=GL_KHR_debug&extensions=GL_KHR_texture_compression_astc_ldr&extensions=GL_OES_get_program_binary
+ */
+ 
+ #include <stdio.h>
+@@ -501,6 +502,7 @@ PFNGLWAITSYNCPROC glad_glWaitSync = NULL;
+ int GLAD_GL_EXT_buffer_storage = 0;
+ int GLAD_GL_EXT_clip_cull_distance = 0;
+ int GLAD_GL_EXT_color_buffer_float = 0;
++int GLAD_GL_EXT_depth_clamp = 0;
+ int GLAD_GL_EXT_disjoint_timer_query = 0;
+ int GLAD_GL_EXT_gpu_shader5 = 0;
+ int GLAD_GL_EXT_multisampled_render_to_texture = 0;
+@@ -969,6 +971,7 @@ static int find_extensionsGLES2(void) {
+ 	GLAD_GL_EXT_buffer_storage = has_ext("GL_EXT_buffer_storage");
+ 	GLAD_GL_EXT_clip_cull_distance = has_ext("GL_EXT_clip_cull_distance");
+ 	GLAD_GL_EXT_color_buffer_float = has_ext("GL_EXT_color_buffer_float");
++	GLAD_GL_EXT_depth_clamp = has_ext("GL_EXT_depth_clamp");
+ 	GLAD_GL_EXT_disjoint_timer_query = has_ext("GL_EXT_disjoint_timer_query");
+ 	GLAD_GL_EXT_gpu_shader5 = has_ext("GL_EXT_gpu_shader5");
+ 	GLAD_GL_EXT_multisampled_render_to_texture = has_ext("GL_EXT_multisampled_render_to_texture");
