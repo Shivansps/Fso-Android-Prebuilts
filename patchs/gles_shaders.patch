@@ -1,7 +1,7 @@
 From f7b651a50aea29856c923bb63a9e36e2371aaaf5 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 22 Jul 2026 19:42:32 -0300
-Subject: [PATCH] gles in shaders and vulkan opcional hw clip
+Subject: [PATCH 1/2] gles in shaders and vulkan opcional hw clip
 
 ---
  code/def_files/data/effects/batched-f.sdr     | 11 +++--
@@ -2107,3 +2107,53 @@ index e7bae0f7860..df24c8490ef 100644
  	GLAD_GL_EXT_disjoint_timer_query = has_ext("GL_EXT_disjoint_timer_query");
  	GLAD_GL_EXT_gpu_shader5 = has_ext("GL_EXT_gpu_shader5");
  	GLAD_GL_EXT_multisampled_render_to_texture = has_ext("GL_EXT_multisampled_render_to_texture");
+
+From 7d16a0c1299ca4957382cc6a8d77a71d32508356 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Wed, 22 Jul 2026 23:30:02 -0300
+Subject: [PATCH 2/2] fix gles errors
+
+---
+ code/def_files/data/effects/default-material-f.sdr | 6 +-----
+ code/def_files/data/effects/default-material-v.sdr | 4 +---
+ 2 files changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/code/def_files/data/effects/default-material-f.sdr b/code/def_files/data/effects/default-material-f.sdr
+index 2bd68efb82e..9892e8e3fd3 100644
+--- a/code/def_files/data/effects/default-material-f.sdr
++++ b/code/def_files/data/effects/default-material-f.sdr
+@@ -12,10 +12,6 @@ precision highp sampler2DArray;
+ 	#define USE_HW_CLIP_DISTANCE
+ #endif
+ 
+-#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
+-#define USE_HW_CLIP_DISTANCE
+-#endif
+-
+ #ifdef VULKAN
+ layout(set = 2, binding = 0, std140)
+ #else
+@@ -65,7 +61,7 @@ in vec4 fragColor;
+ void main()
+ {
+ #ifndef USE_HW_CLIP_DISTANCE
+-	if (clipEnabled != 0 && vClipDist < 0.0) {
++	if (clipEnabled != 0u && vClipDist < 0.0) {
+ 		discard;
+ 	}
+ #endif
+diff --git a/code/def_files/data/effects/default-material-v.sdr b/code/def_files/data/effects/default-material-v.sdr
+index f1c9c5819aa..35f1d9cb350 100644
+--- a/code/def_files/data/effects/default-material-v.sdr
++++ b/code/def_files/data/effects/default-material-v.sdr
+@@ -55,9 +55,7 @@ layout(location = 1) out vec4 fragColor;
+ 
+ #else
+ 
+-#ifdef USE_HW_CLIP_DISTANCE
+-out float gl_ClipDistance[1];
+-#else
++#ifndef USE_HW_CLIP_DISTANCE
+ out float vClipDist;
+ #endif
+ 
