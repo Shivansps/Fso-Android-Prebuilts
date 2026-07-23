@@ -1,7 +1,7 @@
 From f7b651a50aea29856c923bb63a9e36e2371aaaf5 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 22 Jul 2026 19:42:32 -0300
-Subject: [PATCH 1/3] gles in shaders and vulkan opcional hw clip
+Subject: [PATCH 1/4] gles in shaders and vulkan opcional hw clip
 
 ---
  code/def_files/data/effects/batched-f.sdr     | 11 +++--
@@ -2111,7 +2111,7 @@ index e7bae0f7860..df24c8490ef 100644
 From 7d16a0c1299ca4957382cc6a8d77a71d32508356 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 22 Jul 2026 23:30:02 -0300
-Subject: [PATCH 2/3] fix gles errors
+Subject: [PATCH 2/4] fix gles errors
 
 ---
  code/def_files/data/effects/default-material-f.sdr | 6 +-----
@@ -2161,7 +2161,7 @@ index f1c9c5819aa..35f1d9cb350 100644
 From fc530618d99aeae8219aec9219242c257e7e9aae Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Thu, 23 Jul 2026 00:50:55 -0300
-Subject: [PATCH 3/3] Missing vClipDist
+Subject: [PATCH 3/4] Missing vClipDist
 
 ---
  code/def_files/data/effects/main-f.sdr | 3 +++
@@ -2180,4 +2180,61 @@ index ed735e0037d..2830441b4b6 100644
 +#endif
  } vertIn;
  #endif
+ 
+
+From e26f67120544ed0d6c2c9b9d0e17044bf29d5dbc Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Thu, 23 Jul 2026 19:11:25 -0300
+Subject: [PATCH 4/4] Correct vclipdist location for vulkan
+
+---
+ code/def_files/data/effects/default-material-f.sdr | 11 +++++++----
+ code/def_files/data/effects/default-material-v.sdr |  3 +++
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/code/def_files/data/effects/default-material-f.sdr b/code/def_files/data/effects/default-material-f.sdr
+index 9892e8e3fd3..f9765367261 100644
+--- a/code/def_files/data/effects/default-material-f.sdr
++++ b/code/def_files/data/effects/default-material-f.sdr
+@@ -34,10 +34,6 @@ uniform genericData {
+ 	uint clipEnabled;
+ };
+ 
+-#ifndef USE_HW_CLIP_DISTANCE
+-in float vClipDist;
+-#endif
+-
+ layout(location = 0) out vec4 fragOut0;
+ 
+ #ifdef VULKAN
+@@ -46,9 +42,16 @@ layout(set = 1, binding = 1) uniform sampler2DArray baseMap;
+ 
+ layout(location = 0) in vec4 fragTexCoord;
+ layout(location = 1) in vec4 fragColor;
++#ifndef USE_HW_CLIP_DISTANCE
++layout(location = 2) in float vClipDist;
++#endif
+ 
+ #else
+ 
++#ifndef USE_HW_CLIP_DISTANCE
++in float vClipDist;
++#endif
++
+ uniform sampler2DArray baseMap;
+ 
+ in vec4 fragTexCoord;
+diff --git a/code/def_files/data/effects/default-material-v.sdr b/code/def_files/data/effects/default-material-v.sdr
+index 35f1d9cb350..fdeec2ddd89 100644
+--- a/code/def_files/data/effects/default-material-v.sdr
++++ b/code/def_files/data/effects/default-material-v.sdr
+@@ -52,6 +52,9 @@ layout(location = 2) in vec4 vertTexCoord;
+ 
+ layout(location = 0) out vec4 fragTexCoord;
+ layout(location = 1) out vec4 fragColor;
++#ifndef USE_HW_CLIP_DISTANCE
++layout(location = 2) out float vClipDist;
++#endif
+ 
+ #else
  
