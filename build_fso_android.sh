@@ -131,6 +131,20 @@ ninja embedfile
 
 cd ..
 
+export TARGET_ABI=arm64-v8a
+mkdir "$TARGET_ABI"_debug && cd "$TARGET_ABI"_debug
+cmake .. -DFSO_BUILD_WITH_OPENGL_DEBUG=ON -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_WITH_OPENGL_ES=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
+ninja
+mkdir -p ../../jniLibs/"$TARGET_ABI"
+cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
+cd ..
+mkdir "$TARGET_ABI"_release && cd "$TARGET_ABI"_release
+cmake .. -DFSO_BUILD_WITH_OPENGL_ES=ON -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
+ninja
+mkdir -p ../../jniLibs/"$TARGET_ABI"
+cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
+cd ..
+
 export TARGET_ABI=x86
 mkdir "$TARGET_ABI"_debug && cd "$TARGET_ABI"_debug
 cmake .. -DFSO_BUILD_WITH_OPENGL_DEBUG=ON -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_WITH_OPENGL_ES=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
@@ -146,20 +160,6 @@ cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
 cd ..
 
 export TARGET_ABI=x86_64
-mkdir "$TARGET_ABI"_debug && cd "$TARGET_ABI"_debug
-cmake .. -DFSO_BUILD_WITH_OPENGL_DEBUG=ON -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_WITH_OPENGL_ES=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
-ninja
-mkdir -p ../../jniLibs/"$TARGET_ABI"
-cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
-cd ..
-mkdir "$TARGET_ABI"_release && cd "$TARGET_ABI"_release
-cmake .. -DFSO_BUILD_WITH_OPENGL_ES=ON -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
-ninja
-mkdir -p ../../jniLibs/"$TARGET_ABI"
-cp -r bin/*.so  ../../jniLibs/"$TARGET_ABI"
-cd ..
-
-export TARGET_ABI=arm64-v8a
 mkdir "$TARGET_ABI"_debug && cd "$TARGET_ABI"_debug
 cmake .. -DFSO_BUILD_WITH_OPENGL_DEBUG=ON -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_WITH_OPENGL_ES=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=$TARGET_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DEMBEDFILE_PATH=../tool/bin/embedfile -G Ninja && sed -i 's/-lusb-1.0//' build.ninja
 ninja
