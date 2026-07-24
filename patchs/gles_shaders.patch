@@ -1,7 +1,7 @@
 From f7b651a50aea29856c923bb63a9e36e2371aaaf5 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 22 Jul 2026 19:42:32 -0300
-Subject: [PATCH 1/4] gles in shaders and vulkan opcional hw clip
+Subject: [PATCH 1/5] gles in shaders and vulkan opcional hw clip
 
 ---
  code/def_files/data/effects/batched-f.sdr     | 11 +++--
@@ -2111,7 +2111,7 @@ index e7bae0f7860..df24c8490ef 100644
 From 7d16a0c1299ca4957382cc6a8d77a71d32508356 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 22 Jul 2026 23:30:02 -0300
-Subject: [PATCH 2/4] fix gles errors
+Subject: [PATCH 2/5] fix gles errors
 
 ---
  code/def_files/data/effects/default-material-f.sdr | 6 +-----
@@ -2161,7 +2161,7 @@ index f1c9c5819aa..35f1d9cb350 100644
 From fc530618d99aeae8219aec9219242c257e7e9aae Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Thu, 23 Jul 2026 00:50:55 -0300
-Subject: [PATCH 3/4] Missing vClipDist
+Subject: [PATCH 3/5] Missing vClipDist
 
 ---
  code/def_files/data/effects/main-f.sdr | 3 +++
@@ -2185,7 +2185,7 @@ index ed735e0037d..2830441b4b6 100644
 From e26f67120544ed0d6c2c9b9d0e17044bf29d5dbc Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Thu, 23 Jul 2026 19:11:25 -0300
-Subject: [PATCH 4/4] Correct vclipdist location for vulkan
+Subject: [PATCH 4/5] Correct vclipdist location for vulkan
 
 ---
  code/def_files/data/effects/default-material-f.sdr | 11 +++++++----
@@ -2237,4 +2237,78 @@ index 35f1d9cb350..fdeec2ddd89 100644
 +#endif
  
  #else
+ 
+
+From 14ee0a910499e9cb032791e885cd3280125f17c0 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Thu, 23 Jul 2026 22:12:04 -0300
+Subject: [PATCH 5/5] more clip fallback fixes
+
+---
+ code/def_files/data/effects/main-v.sdr       | 7 +++++++
+ code/def_files/data/effects/shadow_map-f.sdr | 6 ++++++
+ code/def_files/data/effects/shadow_map-v.sdr | 6 ++++++
+ 3 files changed, 19 insertions(+)
+
+diff --git a/code/def_files/data/effects/main-v.sdr b/code/def_files/data/effects/main-v.sdr
+index cdfa30c6c70..d0b31af3f07 100644
+--- a/code/def_files/data/effects/main-v.sdr
++++ b/code/def_files/data/effects/main-v.sdr
+@@ -154,8 +154,15 @@ layout(location = 0) out VertexOutput {
+ 	vec4 texCoord;
+ 	mat3 tangentMatrix;
+ 	float fogDist;
++
++#prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
++#prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertOut;
+ #else
+ #prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_TRANSFORM
+diff --git a/code/def_files/data/effects/shadow_map-f.sdr b/code/def_files/data/effects/shadow_map-f.sdr
+index 0fd6068c805..652cacb5b64 100644
+--- a/code/def_files/data/effects/shadow_map-f.sdr
++++ b/code/def_files/data/effects/shadow_map-f.sdr
+@@ -11,10 +11,16 @@ precision highp float;
+ #endif
+ 
+ #ifndef USE_HW_CLIP_DISTANCE
++#ifdef VULKAN
++layout(location = 0) in VertexOutput {
++	float vClipDist;
++} vertIn;
++#else
+ in VertexOutput {
+ 	float vClipDist;
+ } vertIn;
+ #endif
++#endif
+ 
+ void main()
+ {
+diff --git a/code/def_files/data/effects/shadow_map-v.sdr b/code/def_files/data/effects/shadow_map-v.sdr
+index fa02b5dda01..15a2f368bcc 100644
+--- a/code/def_files/data/effects/shadow_map-v.sdr
++++ b/code/def_files/data/effects/shadow_map-v.sdr
+@@ -85,10 +85,16 @@ out VertexOutput {
+ #endif
+ } vertOut;
+ #elif !defined(USE_HW_CLIP_DISTANCE)
++#ifdef VULKAN
++layout(location = 0) out VertexOutput {
++	float vClipDist;
++} vertOut;
++#else
+ out VertexOutput {
+ 	float vClipDist;
+ } vertOut;
+ #endif
++#endif
+ 
+ #define TEXELS_PER_MATRIX 4
  

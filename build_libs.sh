@@ -155,33 +155,6 @@ echo "NDK ready at $ANDROID_NDK_HOME"
 # Build prebuilt libs
 ########################################################################################################
 
-# FFMPEG
-git clone https://github.com/Javernaut/ffmpeg-android-maker
-cd ffmpeg-android-maker
-./ffmpeg-android-maker.sh --source-git-tag=n6.1
-
-mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
-cp -r build/ffmpeg/arm64-v8a/include $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
-cp -r build/ffmpeg/arm64-v8a/lib $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
-rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg/lib/pkgconfig
-
-mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
-cp -r build/ffmpeg/armeabi-v7a/include $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
-cp -r build/ffmpeg/armeabi-v7a/lib $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
-rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg/lib/pkgconfig
-
-mkdir -p $TARGET_PREBUILT_FOLDER/x86/ffmpeg
-cp -r build/ffmpeg/x86/include $TARGET_PREBUILT_FOLDER/x86/ffmpeg
-cp -r build/ffmpeg/x86/lib $TARGET_PREBUILT_FOLDER/x86/ffmpeg
-rm -rf $TARGET_PREBUILT_FOLDER/x86/ffmpeg/lib/pkgconfig
-
-mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
-cp -r build/ffmpeg/x86_64/include $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
-cp -r build/ffmpeg/x86_64/lib $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
-rm -rf $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg/lib/pkgconfig
-
-cd ..
-
 # ShaderC
 ANDROID_NDK_STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
 git clone https://github.com/google/shaderc.git
@@ -265,7 +238,47 @@ ninja
 mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
 cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86_64/shaderc/lib/libshaderc.so
 
-cd .. && cd ..
+cd ..
+# Shaderc public headers
+for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+	mkdir -p "$TARGET_PREBUILT_FOLDER/$ABI/shaderc/include"
+	cp -r libshaderc/include/shaderc "$TARGET_PREBUILT_FOLDER/$ABI/shaderc/include/"
+done
+cd ..
+
+# Vulkan Headers (1.4.341) 
+git clone --depth 1 --branch v1.4.341 https://github.com/KhronosGroup/Vulkan-Headers.git
+for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+	mkdir -p "$TARGET_PREBUILT_FOLDER/$ABI/vulkan-headers"
+	cp -r Vulkan-Headers/include "$TARGET_PREBUILT_FOLDER/$ABI/vulkan-headers/"
+done
+
+# FFMPEG
+git clone https://github.com/Javernaut/ffmpeg-android-maker
+cd ffmpeg-android-maker
+./ffmpeg-android-maker.sh --source-git-tag=n6.1
+
+mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
+cp -r build/ffmpeg/arm64-v8a/include $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
+cp -r build/ffmpeg/arm64-v8a/lib $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg
+rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/ffmpeg/lib/pkgconfig
+
+mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
+cp -r build/ffmpeg/armeabi-v7a/include $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
+cp -r build/ffmpeg/armeabi-v7a/lib $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg
+rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/ffmpeg/lib/pkgconfig
+
+mkdir -p $TARGET_PREBUILT_FOLDER/x86/ffmpeg
+cp -r build/ffmpeg/x86/include $TARGET_PREBUILT_FOLDER/x86/ffmpeg
+cp -r build/ffmpeg/x86/lib $TARGET_PREBUILT_FOLDER/x86/ffmpeg
+rm -rf $TARGET_PREBUILT_FOLDER/x86/ffmpeg/lib/pkgconfig
+
+mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
+cp -r build/ffmpeg/x86_64/include $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
+cp -r build/ffmpeg/x86_64/lib $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg
+rm -rf $TARGET_PREBUILT_FOLDER/x86_64/ffmpeg/lib/pkgconfig
+
+cd ..
 
 # OpenAL Soft
 git clone https://github.com/google/oboe
@@ -451,6 +464,54 @@ cp -r obj/local/x86_64/libfreetype2-static.a $TARGET_PREBUILT_FOLDER/x86_64/free
 
 cd .. && cd ..
 
+########################################################################################################
+# Qt6 for Android (qtFRED)
+########################################################################################################
+# Qt ships precompiled Android binaries per-ABI, so we download instead of building
+# from source. Qt-for-Android is a CROSS package: it needs a HOST Qt of the SAME
+# version at FSO-configure time (QT_HOST_PATH). We fetch that too and ship it apart.
+#
+# NOTE: qtFRED links Core/Gui/Widgets/OpenGL (all in qtbase). The Help module lives
+# in qttools and is NOT reliably available for Android, so we grab qtbase only and
+# disable Help in qtFRED's Android build.
+
+QT_VER="${QT_VER:-6.8.3}"          # must exist for android on aqt; keep host==target
+QT_HOST_ARCH="linux_gcc_64"        # Qt >= 6.7 name; for < 6.7 use "gcc_64"
+QT_DL="$TEMP_FOLDER/qt"
+mkdir -p "$QT_DL"
+
+# aqt in an isolated venv (Ubuntu 24.04 python is externally-managed)
+python3 -m venv "$TEMP_FOLDER/aqtenv"
+. "$TEMP_FOLDER/aqtenv/bin/activate"
+pip install --upgrade pip aqtinstall
+
+# Optional sanity check of what's actually published for this version:
+#   aqt list-qt linux android --arch "$QT_VER"
+
+# --- Host Qt (desktop linux) — used via QT_HOST_PATH, packaged separately ---
+aqt install-qt linux desktop "$QT_VER" "$QT_HOST_ARCH" -O "$QT_DL" --archives qtbase icu
+mkdir -p "$TARGET_PREBUILT_FOLDER/host/Qt6"
+cp -a "$QT_DL/$QT_VER/$QT_HOST_ARCH/." "$TARGET_PREBUILT_FOLDER/host/Qt6/"
+
+# --- Per-ABI Android target Qt ---
+qt_android_arch() {
+    case "$1" in
+        arm64-v8a)   echo android_arm64_v8a ;;
+        armeabi-v7a) echo android_armv7 ;;
+        x86)         echo android_x86 ;;
+        x86_64)      echo android_x86_64 ;;
+    esac
+}
+
+for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+    AQT_ARCH=$(qt_android_arch "$ABI")
+    aqt install-qt linux android "$QT_VER" "$AQT_ARCH" -O "$QT_DL" --archives qtbase
+    # aqt layout: $QT_DL/$QT_VER/$AQT_ARCH/{bin,include,lib,libexec,mkspecs,plugins,...}
+    mkdir -p "$TARGET_PREBUILT_FOLDER/$ABI/Qt6"
+    cp -a "$QT_DL/$QT_VER/$AQT_ARCH/." "$TARGET_PREBUILT_FOLDER/$ABI/Qt6/"
+done
+
+deactivate
 
 # Cleanup + packaging
 cd ..
@@ -468,3 +529,9 @@ for ABI in arm64-v8a x86_64 armeabi-v7a x86; do
     echo "Packaging $ABI -> $FILENAME"
     tar -czf "$FILENAME" -C "$ABI" .
 done
+
+# Host Qt6 (QT_HOST_PATH)
+if [ -d "host" ]; then
+    echo "Packaging host Qt6 -> bin-android-qt6-host.tar.gz"
+    tar -czf "bin-android-qt6-host.tar.gz" -C host .
+fi

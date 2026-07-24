@@ -39,6 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     xz-utils \
     ca-certificates \
+	python3-pip \
+    python3-venv \
     file \
     # --- JDK 17 required by Android sdkmanager ---
     openjdk-17-jdk-headless \
