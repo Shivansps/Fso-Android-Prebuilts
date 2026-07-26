@@ -2,3 +2,5 @@
 /prebuilt_android
 patchs/0001-Add-version_override.cmake.patch
 build.cmd
+build libs.cmd
+/fs2open.github.com

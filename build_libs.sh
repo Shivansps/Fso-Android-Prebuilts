@@ -179,7 +179,7 @@ ninja
 
 "$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/shaderc/lib
-cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/arm64-v8a/shaderc/lib/libshaderc.so
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/arm64-v8a/shaderc/lib/libshaderc_shared.so
 
 cd ..
 cd armeabi-v7a
@@ -198,7 +198,7 @@ ninja
 
 "$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/shaderc/lib
-cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/armeabi-v7a/shaderc/lib/libshaderc.so
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/armeabi-v7a/shaderc/lib/libshaderc_shared.so
 
 cd ..
 cd x86
@@ -217,7 +217,7 @@ ninja
 
 "$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/x86/shaderc/lib
-cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86/shaderc/lib/libshaderc.so
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86/shaderc/lib/libshaderc_shared.so
 
 cd ..
 cd x86_64
@@ -236,7 +236,7 @@ ninja
 
 "$ANDROID_NDK_STRIP" --strip-debug libshaderc/libshaderc_shared.so -o libshaderc/libshaderc.so
 mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/shaderc/lib
-cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86_64/shaderc/lib/libshaderc.so
+cp -r libshaderc/libshaderc.so "$TARGET_PREBUILT_FOLDER"/x86_64/shaderc/lib/libshaderc_shared.so
 
 cd ..
 # Shaderc public headers
@@ -386,8 +386,6 @@ cd SDL3 && git checkout release-3.4.x && cd ..
 mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
 cmake cmake -S SDL3 -B sdl3-android1  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="arm64-v8a" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
 cd sdl3-android1 && make -j4 install
-cp -r $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/include/SDL3/*.* $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/include
-rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/include/SDL3
 rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/bin
 rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/share
 rm -rf $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3/lib/pkgconfig
@@ -399,8 +397,6 @@ cd ..
 mkdir -p $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3
 cmake cmake -S SDL3 -B sdl3-android2  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="armeabi-v7a" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3
 cd sdl3-android2 && make -j4 install
-cp -r $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/include/SDL3/*.* $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/include
-rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/include/SDL3
 rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/bin
 rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/share
 rm -rf $TARGET_PREBUILT_FOLDER/armeabi-v7a/sdl3/lib/pkgconfig
@@ -412,8 +408,6 @@ cd ..
 mkdir -p $TARGET_PREBUILT_FOLDER/x86/sdl3
 cmake cmake -S SDL3 -B sdl3-android3  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="x86" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/x86/sdl3
 cd sdl3-android3 && make -j4 install
-cp -r $TARGET_PREBUILT_FOLDER/x86/sdl3/include/SDL3/*.* $TARGET_PREBUILT_FOLDER/x86/sdl3/include
-rm -rf $TARGET_PREBUILT_FOLDER/x86/sdl3/include/SDL3
 rm -rf $TARGET_PREBUILT_FOLDER/x86/sdl3/bin
 rm -rf $TARGET_PREBUILT_FOLDER/x86/sdl3/share
 rm -rf $TARGET_PREBUILT_FOLDER/x86/sdl3/lib/pkgconfig
@@ -425,8 +419,6 @@ cd ..
 mkdir -p $TARGET_PREBUILT_FOLDER/x86_64/sdl3
 cmake cmake -S SDL3 -B sdl3-android4 -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="x86_64" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/x86_64/sdl3
 cd sdl3-android4 && make -j4 install
-cp -r $TARGET_PREBUILT_FOLDER/x86_64/sdl3/include/SDL3/*.* $TARGET_PREBUILT_FOLDER/x86_64/sdl3/include
-rm -rf $TARGET_PREBUILT_FOLDER/x86_64/sdl3/include/SDL3
 rm -rf $TARGET_PREBUILT_FOLDER/x86_64/sdl3/bin
 rm -rf $TARGET_PREBUILT_FOLDER/x86_64/sdl3/share
 rm -rf $TARGET_PREBUILT_FOLDER/x86_64/sdl3/lib/pkgconfig

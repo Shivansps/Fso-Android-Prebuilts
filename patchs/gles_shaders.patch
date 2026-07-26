@@ -1,64 +1,65 @@
-From f7b651a50aea29856c923bb63a9e36e2371aaaf5 Mon Sep 17 00:00:00 2001
+From bb13438b42cdd4048d1fbf1d82de22f193d0ba13 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Wed, 22 Jul 2026 19:42:32 -0300
-Subject: [PATCH 1/5] gles in shaders and vulkan opcional hw clip
+Date: Fri, 24 Jul 2026 23:03:31 -0300
+Subject: [PATCH] Support GLES in internal shaders and Vulkan Clip distance SW
+ fallback
 
 ---
- code/def_files/data/effects/batched-f.sdr     | 11 +++--
+ code/def_files/data/effects/batched-f.sdr     | 11 ++--
  code/def_files/data/effects/batched-v.sdr     |  5 ++
  code/def_files/data/effects/bloom-comp-f.sdr  | 10 +++-
  code/def_files/data/effects/blur-f.sdr        | 10 +++-
- code/def_files/data/effects/brightpass-f.sdr  | 11 ++++-
- code/def_files/data/effects/copy-f.sdr        | 11 ++++-
- code/def_files/data/effects/decal-f.sdr       | 19 ++++++--
+ code/def_files/data/effects/brightpass-f.sdr  | 11 +++-
+ code/def_files/data/effects/copy-f.sdr        | 11 +++-
+ code/def_files/data/effects/decal-f.sdr       | 19 +++++--
  code/def_files/data/effects/decal-v.sdr       |  6 +++
- .../data/effects/default-material-f.sdr       | 32 +++++++++++--
- .../data/effects/default-material-v.sdr       | 31 ++++++++++--
+ .../data/effects/default-material-f.sdr       | 31 +++++++++--
+ .../data/effects/default-material-v.sdr       | 34 ++++++++++---
  .../data/effects/deferred-clear-f.sdr         | 20 +++++---
- code/def_files/data/effects/deferred-f.sdr    | 27 +++++++----
+ code/def_files/data/effects/deferred-f.sdr    | 27 ++++++----
  code/def_files/data/effects/deferred-v.sdr    |  7 +++
  .../data/effects/effect-distort-f.sdr         | 13 +++--
  .../data/effects/effect-distort-v.sdr         |  7 +++
  code/def_files/data/effects/effect-f.sdr      | 13 +++--
- code/def_files/data/effects/effect-g.sdr      |  8 ++++
+ code/def_files/data/effects/effect-g.sdr      |  8 +++
  code/def_files/data/effects/effect-v.sdr      |  7 +++
  .../data/effects/envmap-sphere-warp-f.sdr     | 10 ++--
- code/def_files/data/effects/fog-f.sdr         | 14 ++++--
+ code/def_files/data/effects/fog-f.sdr         | 14 +++--
  code/def_files/data/effects/fxaa-f.sdr        | 18 ++++++-
- code/def_files/data/effects/fxaa-v.sdr        |  8 ++++
- code/def_files/data/effects/fxaapre-f.sdr     | 11 ++++-
+ code/def_files/data/effects/fxaa-v.sdr        |  8 +++
+ code/def_files/data/effects/fxaapre-f.sdr     | 11 +++-
  .../data/effects/gamma-correct-f.sdr          |  9 +++-
  code/def_files/data/effects/gamma.sdr         |  3 ++
  code/def_files/data/effects/irrmap-f.sdr      | 20 +++++---
  code/def_files/data/effects/lighting.sdr      |  6 +--
- code/def_files/data/effects/ls-f.sdr          | 11 +++--
- code/def_files/data/effects/main-f.sdr        | 48 +++++++++++++------
- code/def_files/data/effects/main-g.sdr        | 36 +++++++++++++-
- code/def_files/data/effects/main-v.sdr        | 43 ++++++++++++++---
+ code/def_files/data/effects/ls-f.sdr          | 11 ++--
+ code/def_files/data/effects/main-f.sdr        | 51 ++++++++++++++-----
+ code/def_files/data/effects/main-g.sdr        | 36 ++++++++++++-
+ code/def_files/data/effects/main-v.sdr        | 50 +++++++++++++++---
  code/def_files/data/effects/msaa-f.sdr        | 20 ++++----
  code/def_files/data/effects/nanovg-f.sdr      |  6 +++
  code/def_files/data/effects/nanovg-v.sdr      |  6 +++
  code/def_files/data/effects/normals.sdr       |  2 +-
  code/def_files/data/effects/passthrough-f.sdr |  7 ++-
- code/def_files/data/effects/post-f.sdr        | 11 ++++-
+ code/def_files/data/effects/post-f.sdr        | 11 +++-
  code/def_files/data/effects/rocketui-f.sdr    | 12 +++--
  code/def_files/data/effects/rocketui-v.sdr    |  6 +++
- code/def_files/data/effects/shadow_map-f.sdr  | 19 ++++++++
- code/def_files/data/effects/shadow_map-g.sdr  | 37 ++++++++++++--
- code/def_files/data/effects/shadow_map-v.sdr  | 34 +++++++++++--
- .../data/effects/shield-impact-f.sdr          | 14 +++---
+ code/def_files/data/effects/shadow_map-f.sdr  | 25 +++++++++
+ code/def_files/data/effects/shadow_map-g.sdr  | 35 +++++++++++--
+ code/def_files/data/effects/shadow_map-v.sdr  | 40 +++++++++++++--
+ .../data/effects/shield-impact-f.sdr          | 14 ++---
  .../data/effects/shield-impact-v.sdr          |  6 +++
  code/def_files/data/effects/smaa-blend-f.sdr  | 12 +++--
  code/def_files/data/effects/smaa-blend-v.sdr  |  6 +++
  code/def_files/data/effects/smaa-edge-f.sdr   | 12 +++--
  code/def_files/data/effects/smaa-edge-v.sdr   |  6 +++
- .../data/effects/smaa-neighbour-f.sdr         | 11 +++--
+ .../data/effects/smaa-neighbour-f.sdr         | 11 ++--
  .../data/effects/smaa-neighbour-v.sdr         |  6 +++
- .../def_files/data/effects/smaa-resolve-f.sdr |  8 +++-
+ .../def_files/data/effects/smaa-resolve-f.sdr |  8 ++-
  code/def_files/data/effects/tonemapping-f.sdr | 10 +++-
- code/def_files/data/effects/video-f.sdr       | 11 ++++-
- code/def_files/data/effects/volumetric-f.sdr  | 11 ++++-
- code/graphics/opengl/es_compatibility.h       |  8 ++--
+ code/def_files/data/effects/video-f.sdr       | 11 +++-
+ code/def_files/data/effects/volumetric-f.sdr  | 11 +++-
+ code/graphics/opengl/es_compatibility.h       |  8 ++-
  code/graphics/opengl/gropengl.cpp             |  4 +-
  code/graphics/opengl/gropenglshader.cpp       |  7 ---
  code/graphics/vulkan/VulkanRendererSetup.cpp  |  2 +-
@@ -68,7 +69,7 @@ Subject: [PATCH 1/5] gles in shaders and vulkan opcional hw clip
  code/graphics/vulkan/VulkanShaderCompiler.h   |  2 +
  lib/opengl/gl/glad_es/include/glad/glad.h     | 12 +++--
  lib/opengl/gl/glad_es/src/glad.c              |  9 ++--
- 64 files changed, 653 insertions(+), 165 deletions(-)
+ 64 files changed, 674 insertions(+), 166 deletions(-)
 
 diff --git a/code/def_files/data/effects/batched-f.sdr b/code/def_files/data/effects/batched-f.sdr
 index 660787fe4e2..4d1d0ec55a9 100644
@@ -268,10 +269,10 @@ index 42d99146327..dcffcf6cfcc 100644
  #ifdef VULKAN
  // Binding 0: box vertex positions
 diff --git a/code/def_files/data/effects/default-material-f.sdr b/code/def_files/data/effects/default-material-f.sdr
-index cec7df3a766..2bd68efb82e 100644
+index cec7df3a766..f9765367261 100644
 --- a/code/def_files/data/effects/default-material-f.sdr
 +++ b/code/def_files/data/effects/default-material-f.sdr
-@@ -1,3 +1,21 @@
+@@ -1,3 +1,17 @@
 +#ifdef GL_ES
 +#extension GL_EXT_clip_cull_distance : enable
 +precision highp float;
@@ -286,34 +287,33 @@ index cec7df3a766..2bd68efb82e 100644
 +	#define USE_HW_CLIP_DISTANCE
 +#endif
 +
-+#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
-+#define USE_HW_CLIP_DISTANCE
-+#endif
-+
  #ifdef VULKAN
  layout(set = 2, binding = 0, std140)
  #else
-@@ -20,6 +38,12 @@ uniform genericData {
+@@ -20,22 +34,28 @@ uniform genericData {
  	uint clipEnabled;
  };
  
-+#ifndef USE_HW_CLIP_DISTANCE
-+in float vClipDist;
-+#endif
-+
 +layout(location = 0) out vec4 fragOut0;
 +
  #ifdef VULKAN
  
  layout(set = 1, binding = 1) uniform sampler2DArray baseMap;
-@@ -27,15 +51,12 @@ layout(set = 1, binding = 1) uniform sampler2DArray baseMap;
+ 
  layout(location = 0) in vec4 fragTexCoord;
  layout(location = 1) in vec4 fragColor;
- 
--layout(location = 0) out vec4 fragOut0;
 -
+-layout(location = 0) out vec4 fragOut0;
++#ifndef USE_HW_CLIP_DISTANCE
++layout(location = 2) in float vClipDist;
++#endif
+ 
  #else
  
++#ifndef USE_HW_CLIP_DISTANCE
++in float vClipDist;
++#endif
++
  uniform sampler2DArray baseMap;
  
  in vec4 fragTexCoord;
@@ -322,12 +322,12 @@ index cec7df3a766..2bd68efb82e 100644
  
  #endif
  
-@@ -43,6 +64,11 @@ out vec4 fragOut0;
+@@ -43,6 +63,11 @@ out vec4 fragOut0;
  
  void main()
  {
 +#ifndef USE_HW_CLIP_DISTANCE
-+	if (clipEnabled != 0 && vClipDist < 0.0) {
++	if (clipEnabled != 0u && vClipDist < 0.0) {
 +		discard;
 +	}
 +#endif
@@ -335,7 +335,7 @@ index cec7df3a766..2bd68efb82e 100644
  	if(alphaThreshold > baseColor.a) discard;
  	baseColor.rgb = (srgb == 1) ? srgb_to_linear(baseColor.rgb) : baseColor.rgb;
 diff --git a/code/def_files/data/effects/default-material-v.sdr b/code/def_files/data/effects/default-material-v.sdr
-index 902240860ea..f1c9c5819aa 100644
+index 902240860ea..fdeec2ddd89 100644
 --- a/code/def_files/data/effects/default-material-v.sdr
 +++ b/code/def_files/data/effects/default-material-v.sdr
 @@ -1,3 +1,17 @@
@@ -356,19 +356,24 @@ index 902240860ea..f1c9c5819aa 100644
  #ifdef VULKAN
  layout(set = 2, binding = 0, std140)
  #else
-@@ -41,7 +55,11 @@ layout(location = 1) out vec4 fragColor;
+@@ -38,10 +52,15 @@ layout(location = 2) in vec4 vertTexCoord;
+ 
+ layout(location = 0) out vec4 fragTexCoord;
+ layout(location = 1) out vec4 fragColor;
++#ifndef USE_HW_CLIP_DISTANCE
++layout(location = 2) out float vClipDist;
++#endif
  
  #else
  
-+#ifdef USE_HW_CLIP_DISTANCE
- out float gl_ClipDistance[1];
-+#else
+-out float gl_ClipDistance[1];
++#ifndef USE_HW_CLIP_DISTANCE
 +out float vClipDist;
 +#endif
  
  out vec4 fragTexCoord;
  in vec4 vertTexCoord;
-@@ -58,13 +76,16 @@ void main()
+@@ -58,13 +77,16 @@ void main()
  	gl_Position = projMatrix * modelViewMatrix * vertPosition;
  
  	if (clipEnabled != 0u) {
@@ -933,7 +938,7 @@ index cc4ff755da0..694ed7f454a 100644
  uniform sampler2D cockpit;
  #endif
 diff --git a/code/def_files/data/effects/main-f.sdr b/code/def_files/data/effects/main-f.sdr
-index 1a46b848d9e..ed735e0037d 100644
+index 1a46b848d9e..2830441b4b6 100644
 --- a/code/def_files/data/effects/main-f.sdr
 +++ b/code/def_files/data/effects/main-f.sdr
 @@ -1,4 +1,20 @@
@@ -989,9 +994,13 @@ index 1a46b848d9e..ed735e0037d 100644
  #else
  #prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_DIFFUSE
  uniform sampler2DArray sBasemap;
-@@ -182,12 +204,6 @@ in VertexOutput {
+@@ -181,13 +203,10 @@ in VertexOutput {
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
  	vec4 shadowPos;
  #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
  } vertIn;
 -
 -out vec4 fragOut0;
@@ -1002,7 +1011,7 @@ index 1a46b848d9e..ed735e0037d 100644
  #endif
  
  vec3 FresnelLazarovEnv(vec3 specColor, vec3 view, vec3 normal, float gloss)
-@@ -272,6 +288,10 @@ vec3 CalculateLighting(vec3 normal, vec3 diffuseMaterial, vec3 specularMaterial,
+@@ -272,6 +291,10 @@ vec3 CalculateLighting(vec3 normal, vec3 diffuseMaterial, vec3 specularMaterial,
  
  void main()
  {
@@ -1013,7 +1022,7 @@ index 1a46b848d9e..ed735e0037d 100644
  	vec3 eyeDir = vec3(normalize(-vertIn.position).xyz);
  	vec2 texCoord = vertIn.texCoord.xy;
  
-@@ -448,7 +468,7 @@ void main()
+@@ -448,7 +471,7 @@ void main()
  		#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_DIFFUSE
  		// This code will only be used by the forward renderer so we apply the fog effect to both the emissive and the base
  		// color.
@@ -1022,7 +1031,7 @@ index 1a46b848d9e..ed735e0037d 100644
  		baseColor.rgb = mix(emissiveColor.rgb + baseColor.rgb, finalFogColor, fogDensityFinal);
  		emissiveColor.rgb = vec3(0.0); // Zero the emissive color since it has already been added by the previous line
  		specColor.rgb *= fogDensityFinal;
-@@ -493,11 +513,11 @@ void main()
+@@ -493,11 +516,11 @@ void main()
  		#prereplace IF_NOT_FLAG MODEL_SDR_FLAG_LIGHT
  			#prereplace IF_FLAG MODEL_SDR_FLAG_SPEC
  				baseColor.rgb += pow(1.0 - clamp(dot(eyeDir, normal), 0.0, 1.0), 5.0 * clamp(glossData, 0.01, 1.0)) * specColor.rgb;
@@ -1104,7 +1113,7 @@ index e348c386dfa..531d203c61d 100644
  			}
  
 diff --git a/code/def_files/data/effects/main-v.sdr b/code/def_files/data/effects/main-v.sdr
-index 39426766ab1..cdfa30c6c70 100644
+index 39426766ab1..d0b31af3f07 100644
 --- a/code/def_files/data/effects/main-v.sdr
 +++ b/code/def_files/data/effects/main-v.sdr
 @@ -1,8 +1,27 @@
@@ -1135,7 +1144,23 @@ index 39426766ab1..cdfa30c6c70 100644
  #include "shadows.sdr"
  
  #conditional_include +"LARGE_SHADER" "main_large.sdr"
-@@ -158,6 +177,10 @@ out VertexOutput {
+@@ -135,8 +154,15 @@ layout(location = 0) out VertexOutput {
+ 	vec4 texCoord;
+ 	mat3 tangentMatrix;
+ 	float fogDist;
++
++#prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
+ 	vec4 shadowUV[NUM_SHADOW_CASCADES];
+ 	vec4 shadowPos;
++#prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
++
++#ifndef USE_HW_CLIP_DISTANCE
++    float vClipDist;
++#endif
+ } vertOut;
+ #else
+ #prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_TRANSFORM
+@@ -158,6 +184,10 @@ out VertexOutput {
  	vec4 shadowUV[NUM_SHADOW_CASCADES];
  	vec4 shadowPos;
  #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
@@ -1146,7 +1171,7 @@ index 39426766ab1..cdfa30c6c70 100644
  } vertOut;
  
  #define TEXELS_PER_MATRIX 4
-@@ -239,12 +262,20 @@ void main()
+@@ -239,12 +269,20 @@ void main()
  		}
  	#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_TRANSFORM
  
@@ -1349,10 +1374,10 @@ index 07ae245966f..d4c0e2c4cdf 100644
  #ifdef VULKAN
  layout(location = 0) in vec2 vertPosition;
 diff --git a/code/def_files/data/effects/shadow_map-f.sdr b/code/def_files/data/effects/shadow_map-f.sdr
-index fff405831fd..0fd6068c805 100644
+index fff405831fd..652cacb5b64 100644
 --- a/code/def_files/data/effects/shadow_map-f.sdr
 +++ b/code/def_files/data/effects/shadow_map-f.sdr
-@@ -1,5 +1,24 @@
+@@ -1,5 +1,30 @@
  //? #version 150
 +#ifdef GL_ES
 +#extension GL_EXT_clip_cull_distance: enable
@@ -1366,9 +1391,15 @@ index fff405831fd..0fd6068c805 100644
 +#endif
 +
 +#ifndef USE_HW_CLIP_DISTANCE
++#ifdef VULKAN
++layout(location = 0) in VertexOutput {
++	float vClipDist;
++} vertIn;
++#else
 +in VertexOutput {
 +	float vClipDist;
 +} vertIn;
++#endif
 +#endif
  
  void main()
@@ -1378,10 +1409,10 @@ index fff405831fd..0fd6068c805 100644
 +#endif
  }
 diff --git a/code/def_files/data/effects/shadow_map-g.sdr b/code/def_files/data/effects/shadow_map-g.sdr
-index 0de37ea486c..0f13cb1d1ee 100644
+index 585276dca69..0f13cb1d1ee 100644
 --- a/code/def_files/data/effects/shadow_map-g.sdr
 +++ b/code/def_files/data/effects/shadow_map-g.sdr
-@@ -1,15 +1,30 @@
+@@ -1,9 +1,22 @@
  //? #version 150
 +#ifdef GL_ES
 +#extension GL_EXT_gpu_shader5: enable
@@ -1405,15 +1436,7 @@ index 0de37ea486c..0f13cb1d1ee 100644
  layout(invocations = NUM_SHADOW_CASCADES) in;
  #endif
  
- layout (std140) uniform shadowCascadeParams {
-     int cascade_offset;
-     int cascade_count;
-+    float rtShadowBiasMin;
-+    float rtShadowBiasMax;
- 
- 	mat4 shadow_mv_matrix;
- 	mat4 shadow_proj_matrix[NUM_SHADOW_CASCADES];
-@@ -18,16 +33,25 @@ layout (std140) uniform shadowCascadeParams {
+@@ -20,16 +33,25 @@ layout (std140) uniform shadowCascadeParams {
  };
  
  in VertexOutput {
@@ -1441,7 +1464,7 @@ index 0de37ea486c..0f13cb1d1ee 100644
      if (gl_InvocationID >= cascade_count) return;
      int cascade_id = cascade_offset + gl_InvocationID;
  #else
-@@ -43,7 +67,12 @@ void main(void)
+@@ -45,7 +67,12 @@ void main(void)
  		}
  
  		gl_Layer = cascade_id;
@@ -1456,7 +1479,7 @@ index 0de37ea486c..0f13cb1d1ee 100644
  		EmitVertex();
  	}
 diff --git a/code/def_files/data/effects/shadow_map-v.sdr b/code/def_files/data/effects/shadow_map-v.sdr
-index f3e92cd21d1..fa02b5dda01 100644
+index f3e92cd21d1..15a2f368bcc 100644
 --- a/code/def_files/data/effects/shadow_map-v.sdr
 +++ b/code/def_files/data/effects/shadow_map-v.sdr
 @@ -1,9 +1,22 @@
@@ -1483,7 +1506,7 @@ index f3e92cd21d1..fa02b5dda01 100644
  
  #ifdef VULKAN
  layout(location = 0) in vec4 vertPosition;
-@@ -62,11 +75,18 @@ uniform samplerBuffer transform_tex;
+@@ -62,13 +75,26 @@ uniform samplerBuffer transform_tex;
  // supports writing gl_Layer from the vertex shader, see CAPABILITY_FAST_SHADOWS).
  #ifdef GEOMETRY_FALLBACK
  out VertexOutput {
@@ -1498,12 +1521,20 @@ index f3e92cd21d1..fa02b5dda01 100644
 +#endif
 +} vertOut;
 +#elif !defined(USE_HW_CLIP_DISTANCE)
++#ifdef VULKAN
++layout(location = 0) out VertexOutput {
++	float vClipDist;
++} vertOut;
++#else
 +out VertexOutput {
 +	float vClipDist;
  } vertOut;
  #endif
++#endif
  
-@@ -108,7 +128,7 @@ void main()
+ #define TEXELS_PER_MATRIX 4
+ 
+@@ -108,7 +134,7 @@ void main()
  #ifdef VULKAN
  	int instanceIndex = gl_InstanceIndex;
  #else
@@ -1512,7 +1543,7 @@ index f3e92cd21d1..fa02b5dda01 100644
  		#ifdef APPLE
  			vertOut.instance = float(gl_InstanceIDARB);
  		#else
-@@ -129,11 +149,19 @@ void main()
+@@ -129,11 +155,19 @@ void main()
          gl_Position = position;
      }
  
@@ -1879,7 +1910,7 @@ index a864be1545e..3cdae8eeb82 100644
  
  // glGetCompressedTexImage not present on GLES and no equivalent
 diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
-index 0ead59d377a..a49a7e17a61 100644
+index 444515b797a..ea3b337eeec 100644
 --- a/code/graphics/opengl/gropengl.cpp
 +++ b/code/graphics/opengl/gropengl.cpp
 @@ -1453,7 +1453,9 @@ bool gr_opengl_init(std::unique_ptr<os::GraphicsOperations>&& graphicsOps)
@@ -1912,10 +1943,10 @@ index 41c3142d153..f2e5e5a768f 100644
  				// Enable shader caching
  				glProgramParameteri(program->getShaderHandle(), GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
 diff --git a/code/graphics/vulkan/VulkanRendererSetup.cpp b/code/graphics/vulkan/VulkanRendererSetup.cpp
-index 20877bcb434..160acbdea55 100644
+index 90ebc51b567..8b0b673a6d0 100644
 --- a/code/graphics/vulkan/VulkanRendererSetup.cpp
 +++ b/code/graphics/vulkan/VulkanRendererSetup.cpp
-@@ -423,7 +423,7 @@ bool VulkanRenderer::initialize()
+@@ -426,7 +426,7 @@ bool VulkanRenderer::initialize()
  
  	// Initialize shader manager
  	m_shaderManager = std::make_unique<VulkanShaderManager>();
@@ -1960,10 +1991,10 @@ index 0f3e13381cb..25a1c724ee9 100644
  	/**
  	 * @brief Shutdown and release all shader modules
 diff --git a/code/graphics/vulkan/VulkanShaderCompiler.cpp b/code/graphics/vulkan/VulkanShaderCompiler.cpp
-index 3b03b615c8c..990f4d9dc21 100644
+index 2ff077b19ed..39ec38f7e40 100644
 --- a/code/graphics/vulkan/VulkanShaderCompiler.cpp
 +++ b/code/graphics/vulkan/VulkanShaderCompiler.cpp
-@@ -106,8 +106,9 @@ VulkanShadercLibrary::VulkanShadercLibrary()
+@@ -102,8 +102,9 @@ VulkanShadercLibrary::VulkanShadercLibrary()
  VulkanShaderCompiler::VulkanShaderCompiler() = default;
  VulkanShaderCompiler::~VulkanShaderCompiler() = default;
  
@@ -1974,7 +2005,7 @@ index 3b03b615c8c..990f4d9dc21 100644
  	if (m_initialized) {
  		return true;
  	}
-@@ -152,6 +153,13 @@ SCP_string VulkanShaderCompiler::buildHeader(vk::ShaderStageFlagBits /*stage*/,
+@@ -148,6 +149,13 @@ SCP_string VulkanShaderCompiler::buildHeader(vk::ShaderStageFlagBits /*stage*/,
  	// shaderc automatically predefines VULKAN=100 when targeting Vulkan,
  	// so we do NOT define it here — doing so causes a "Macro redefined" error.
  
@@ -2107,208 +2138,3 @@ index e7bae0f7860..df24c8490ef 100644
  	GLAD_GL_EXT_disjoint_timer_query = has_ext("GL_EXT_disjoint_timer_query");
  	GLAD_GL_EXT_gpu_shader5 = has_ext("GL_EXT_gpu_shader5");
  	GLAD_GL_EXT_multisampled_render_to_texture = has_ext("GL_EXT_multisampled_render_to_texture");
-
-From 7d16a0c1299ca4957382cc6a8d77a71d32508356 Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Wed, 22 Jul 2026 23:30:02 -0300
-Subject: [PATCH 2/5] fix gles errors
-
----
- code/def_files/data/effects/default-material-f.sdr | 6 +-----
- code/def_files/data/effects/default-material-v.sdr | 4 +---
- 2 files changed, 2 insertions(+), 8 deletions(-)
-
-diff --git a/code/def_files/data/effects/default-material-f.sdr b/code/def_files/data/effects/default-material-f.sdr
-index 2bd68efb82e..9892e8e3fd3 100644
---- a/code/def_files/data/effects/default-material-f.sdr
-+++ b/code/def_files/data/effects/default-material-f.sdr
-@@ -12,10 +12,6 @@ precision highp sampler2DArray;
- 	#define USE_HW_CLIP_DISTANCE
- #endif
- 
--#if !defined(GL_ES) || defined(GL_EXT_clip_cull_distance)
--#define USE_HW_CLIP_DISTANCE
--#endif
--
- #ifdef VULKAN
- layout(set = 2, binding = 0, std140)
- #else
-@@ -65,7 +61,7 @@ in vec4 fragColor;
- void main()
- {
- #ifndef USE_HW_CLIP_DISTANCE
--	if (clipEnabled != 0 && vClipDist < 0.0) {
-+	if (clipEnabled != 0u && vClipDist < 0.0) {
- 		discard;
- 	}
- #endif
-diff --git a/code/def_files/data/effects/default-material-v.sdr b/code/def_files/data/effects/default-material-v.sdr
-index f1c9c5819aa..35f1d9cb350 100644
---- a/code/def_files/data/effects/default-material-v.sdr
-+++ b/code/def_files/data/effects/default-material-v.sdr
-@@ -55,9 +55,7 @@ layout(location = 1) out vec4 fragColor;
- 
- #else
- 
--#ifdef USE_HW_CLIP_DISTANCE
--out float gl_ClipDistance[1];
--#else
-+#ifndef USE_HW_CLIP_DISTANCE
- out float vClipDist;
- #endif
- 
-
-From fc530618d99aeae8219aec9219242c257e7e9aae Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Thu, 23 Jul 2026 00:50:55 -0300
-Subject: [PATCH 3/5] Missing vClipDist
-
----
- code/def_files/data/effects/main-f.sdr | 3 +++
- 1 file changed, 3 insertions(+)
-
-diff --git a/code/def_files/data/effects/main-f.sdr b/code/def_files/data/effects/main-f.sdr
-index ed735e0037d..2830441b4b6 100644
---- a/code/def_files/data/effects/main-f.sdr
-+++ b/code/def_files/data/effects/main-f.sdr
-@@ -203,6 +203,9 @@ in VertexOutput {
- 	vec4 shadowUV[NUM_SHADOW_CASCADES];
- 	vec4 shadowPos;
- #prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
-+#ifndef USE_HW_CLIP_DISTANCE
-+    float vClipDist;
-+#endif
- } vertIn;
- #endif
- 
-
-From e26f67120544ed0d6c2c9b9d0e17044bf29d5dbc Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Thu, 23 Jul 2026 19:11:25 -0300
-Subject: [PATCH 4/5] Correct vclipdist location for vulkan
-
----
- code/def_files/data/effects/default-material-f.sdr | 11 +++++++----
- code/def_files/data/effects/default-material-v.sdr |  3 +++
- 2 files changed, 10 insertions(+), 4 deletions(-)
-
-diff --git a/code/def_files/data/effects/default-material-f.sdr b/code/def_files/data/effects/default-material-f.sdr
-index 9892e8e3fd3..f9765367261 100644
---- a/code/def_files/data/effects/default-material-f.sdr
-+++ b/code/def_files/data/effects/default-material-f.sdr
-@@ -34,10 +34,6 @@ uniform genericData {
- 	uint clipEnabled;
- };
- 
--#ifndef USE_HW_CLIP_DISTANCE
--in float vClipDist;
--#endif
--
- layout(location = 0) out vec4 fragOut0;
- 
- #ifdef VULKAN
-@@ -46,9 +42,16 @@ layout(set = 1, binding = 1) uniform sampler2DArray baseMap;
- 
- layout(location = 0) in vec4 fragTexCoord;
- layout(location = 1) in vec4 fragColor;
-+#ifndef USE_HW_CLIP_DISTANCE
-+layout(location = 2) in float vClipDist;
-+#endif
- 
- #else
- 
-+#ifndef USE_HW_CLIP_DISTANCE
-+in float vClipDist;
-+#endif
-+
- uniform sampler2DArray baseMap;
- 
- in vec4 fragTexCoord;
-diff --git a/code/def_files/data/effects/default-material-v.sdr b/code/def_files/data/effects/default-material-v.sdr
-index 35f1d9cb350..fdeec2ddd89 100644
---- a/code/def_files/data/effects/default-material-v.sdr
-+++ b/code/def_files/data/effects/default-material-v.sdr
-@@ -52,6 +52,9 @@ layout(location = 2) in vec4 vertTexCoord;
- 
- layout(location = 0) out vec4 fragTexCoord;
- layout(location = 1) out vec4 fragColor;
-+#ifndef USE_HW_CLIP_DISTANCE
-+layout(location = 2) out float vClipDist;
-+#endif
- 
- #else
- 
-
-From 14ee0a910499e9cb032791e885cd3280125f17c0 Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Thu, 23 Jul 2026 22:12:04 -0300
-Subject: [PATCH 5/5] more clip fallback fixes
-
----
- code/def_files/data/effects/main-v.sdr       | 7 +++++++
- code/def_files/data/effects/shadow_map-f.sdr | 6 ++++++
- code/def_files/data/effects/shadow_map-v.sdr | 6 ++++++
- 3 files changed, 19 insertions(+)
-
-diff --git a/code/def_files/data/effects/main-v.sdr b/code/def_files/data/effects/main-v.sdr
-index cdfa30c6c70..d0b31af3f07 100644
---- a/code/def_files/data/effects/main-v.sdr
-+++ b/code/def_files/data/effects/main-v.sdr
-@@ -154,8 +154,15 @@ layout(location = 0) out VertexOutput {
- 	vec4 texCoord;
- 	mat3 tangentMatrix;
- 	float fogDist;
-+
-+#prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
- 	vec4 shadowUV[NUM_SHADOW_CASCADES];
- 	vec4 shadowPos;
-+#prereplace ENDIF_FLAG_COMPILED MODEL_SDR_FLAG_SHADOWS
-+
-+#ifndef USE_HW_CLIP_DISTANCE
-+    float vClipDist;
-+#endif
- } vertOut;
- #else
- #prereplace IF_FLAG_COMPILED MODEL_SDR_FLAG_TRANSFORM
-diff --git a/code/def_files/data/effects/shadow_map-f.sdr b/code/def_files/data/effects/shadow_map-f.sdr
-index 0fd6068c805..652cacb5b64 100644
---- a/code/def_files/data/effects/shadow_map-f.sdr
-+++ b/code/def_files/data/effects/shadow_map-f.sdr
-@@ -11,10 +11,16 @@ precision highp float;
- #endif
- 
- #ifndef USE_HW_CLIP_DISTANCE
-+#ifdef VULKAN
-+layout(location = 0) in VertexOutput {
-+	float vClipDist;
-+} vertIn;
-+#else
- in VertexOutput {
- 	float vClipDist;
- } vertIn;
- #endif
-+#endif
- 
- void main()
- {
-diff --git a/code/def_files/data/effects/shadow_map-v.sdr b/code/def_files/data/effects/shadow_map-v.sdr
-index fa02b5dda01..15a2f368bcc 100644
---- a/code/def_files/data/effects/shadow_map-v.sdr
-+++ b/code/def_files/data/effects/shadow_map-v.sdr
-@@ -85,10 +85,16 @@ out VertexOutput {
- #endif
- } vertOut;
- #elif !defined(USE_HW_CLIP_DISTANCE)
-+#ifdef VULKAN
-+layout(location = 0) out VertexOutput {
-+	float vClipDist;
-+} vertOut;
-+#else
- out VertexOutput {
- 	float vClipDist;
- } vertOut;
- #endif
-+#endif
- 
- #define TEXELS_PER_MATRIX 4
- 
