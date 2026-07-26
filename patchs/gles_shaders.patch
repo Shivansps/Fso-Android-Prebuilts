@@ -1,8 +1,8 @@
 From bb13438b42cdd4048d1fbf1d82de22f193d0ba13 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Fri, 24 Jul 2026 23:03:31 -0300
-Subject: [PATCH] Support GLES in internal shaders and Vulkan Clip distance SW
- fallback
+Subject: [PATCH 1/2] Support GLES in internal shaders and Vulkan Clip distance
+ SW fallback
 
 ---
  code/def_files/data/effects/batched-f.sdr     | 11 ++--
@@ -2138,3 +2138,28 @@ index e7bae0f7860..df24c8490ef 100644
  	GLAD_GL_EXT_disjoint_timer_query = has_ext("GL_EXT_disjoint_timer_query");
  	GLAD_GL_EXT_gpu_shader5 = has_ext("GL_EXT_gpu_shader5");
  	GLAD_GL_EXT_multisampled_render_to_texture = has_ext("GL_EXT_multisampled_render_to_texture");
+
+From 5438ca5af039d036b9e80b6cfa549f0e546fa95c Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sun, 26 Jul 2026 12:14:02 -0300
+Subject: [PATCH 2/2] fix imgui crashing on gles
+
+---
+ freespace2/SDLGraphicsOperations.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/freespace2/SDLGraphicsOperations.cpp b/freespace2/SDLGraphicsOperations.cpp
+index 32702c0fa3c..4c5a45c2b71 100644
+--- a/freespace2/SDLGraphicsOperations.cpp
++++ b/freespace2/SDLGraphicsOperations.cpp
+@@ -328,8 +328,9 @@ std::unique_ptr<os::OpenGLContext> SDLGraphicsOperations::createOpenGLContext(os
+ 
+ 	Assertion(ImGui::GetCurrentContext() != nullptr, "Can't use ImGui without a valid context!");
+ 
+-	#ifndef USE_OPENGL_ES
+ 	ImGui_ImplSDL3_InitForOpenGL(viewport->toSDLWindow(), ctx);
++
++	#ifndef USE_OPENGL_ES
+ 	ImGui_ImplOpenGL3_Init();
+ 	#else
+ 	ImGui_ImplOpenGL3_Init("#version 300 es");
