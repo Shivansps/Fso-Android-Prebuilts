@@ -1,7 +1,7 @@
 From 54da25977de25553500c4553d23bcadc768a783f Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Thu, 6 Aug 2026 18:18:29 -0300
-Subject: [PATCH 1/2] GLES Shaders and Vulkan Clip fallback
+Subject: [PATCH 1/3] GLES Shaders and Vulkan Clip fallback
 
 ---
  code/def_files/data/effects/batched-f.sdr     | 10 ++--
@@ -987,7 +987,7 @@ index f8390b496fc..3f213fc567d 100644
  		baseColor.rgb = mix(emissiveColor.rgb + baseColor.rgb, finalFogColor, fogDensityFinal);
  		emissiveColor.rgb = vec3(0.0); // Zero the emissive color since it has already been added by the previous line
  		specColor.rgb *= fogDensityFinal;
-@@ -496,11 +518,11 @@ void main()
+@@ -496,14 +518,14 @@ void main()
  		#prereplace IF_NOT_FLAG MODEL_SDR_FLAG_LIGHT
  			#prereplace IF_FLAG MODEL_SDR_FLAG_SPEC
  				baseColor.rgb += pow(1.0 - clamp(dot(eyeDir, normal), 0.0, 1.0), 5.0 * clamp(glossData, 0.01, 1.0)) * specColor.rgb;
@@ -998,6 +998,9 @@ index f8390b496fc..3f213fc567d 100644
  			emissiveColor.rgb += baseColor.rgb;
 -			aoFactors.x = 0;
 +			aoFactors.x = 0.0f;
+ 			// and leave nothing for the light pass to add on top of it
+ 			baseColor.rgb = vec3(0.0);
+ 			specColor = vec4(0.0);
  		#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_LIGHT
  	#prereplace ENDIF_FLAG //MODEL_SDR_FLAG_DEFERRED
  
@@ -2037,7 +2040,7 @@ index e7bae0f7860..df24c8490ef 100644
 From ee4da4f066e6b132b201998026726552bae3e326 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 12 Aug 2026 20:00:19 -0300
-Subject: [PATCH 2/2] clip fallback: change defined name, set from engine side
+Subject: [PATCH 2/3] clip fallback: change defined name, set from engine side
  and invert usage
 
 ---
@@ -2440,3 +2443,337 @@ index 39ec38f7e40..5be2672e504 100644
  	}
  
  	// Blinn-Phong lighting model (matches OpenGL's opengl_shader_get_header)
+
+From 8a60e4f1ebcf6bc3655fb544de62b390aa0b13c2 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sun, 1 Nov 2026 16:55:58 -0300
+Subject: [PATCH 3/3] Proposed changes and fixes
+
+Fixed:
+-The OpenGL ES option stays on when OpenGL is off (issue #7984)
+-Missing precision in copy-f, volumetric-f and smaa-resolve-f
+-msaa-f including z-compress before precision quantification
+-missing float literals in volumetric-f
+-Fixed decals blending
+-Restored glBindFragDataLocation() for use in legacy external shaders
+-Enabled GL_ARB_explicit_attrib_location ext for GLSL version below 330 in GL
+-Guarded enabling/disabling of GL_CLIP_DISTANCE0_EXT and GL_DEPTH_CLAMP
+-Restored PI in lighting.sdr
+-removed "External shaders only" indication from cmakelists.txt
+---
+ CMakeLists.txt                                |  4 +--
+ code/def_files/data/effects/copy-f.sdr        |  1 +
+ code/def_files/data/effects/lighting.sdr      |  2 +-
+ code/def_files/data/effects/msaa-f.sdr        |  9 +++---
+ .../def_files/data/effects/smaa-resolve-f.sdr |  1 +
+ code/def_files/data/effects/volumetric-f.sdr  | 31 ++++++++++++-------
+ code/graphics/opengl/es_compatibility.h       |  3 ++
+ code/graphics/opengl/gropenglshader.cpp       | 10 ++++++
+ code/graphics/opengl/gropenglstate.cpp        |  7 +++++
+ code/graphics/opengl/gropengltnl.cpp          | 18 +++++++++++
+ code/graphics/vulkan/VulkanShaderCompiler.h   |  1 -
+ 11 files changed, 68 insertions(+), 19 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 43508ae83f6..7c8144d78ad 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -138,13 +138,13 @@ OPTION(FSO_BUILD_WITH_DISCORD "Build with Discord support" ON)
+ 
+ OPTION(FSO_BUILD_WITH_OPENGL "Enable compilation of the OpenGL renderer" ON)
+ OPTION(FSO_BUILD_WITH_OPENGL_DEBUG "Enables debug option for OpenGL" OFF)
+-OPTION(FSO_BUILD_WITH_OPENGL_ES "When building OpenGL, use OpenGL ES compatibility layer (External shaders only!)" OFF)
++OPTION(FSO_BUILD_WITH_OPENGL_ES "When building OpenGL, use OpenGL ES compatibility layer" OFF)
+ 
+ OPTION(FSO_BUILD_WITH_VULKAN "Enable compilation of the Vulkan renderer" ON)
+ 
+ if(NOT FSO_BUILD_WITH_OPENGL AND FSO_BUILD_WITH_OPENGL_ES)
+ 	# Disable GLES if not building with OpenGL
+-	set(FSO_BUILD_WITH_OPENGL_ES OFF FORCE)
++	set(FSO_BUILD_WITH_OPENGL_ES OFF CACHE BOOL "" FORCE)
+ endif()
+ 
+ 
+diff --git a/code/def_files/data/effects/copy-f.sdr b/code/def_files/data/effects/copy-f.sdr
+index db9e9166b69..52510a75a71 100644
+--- a/code/def_files/data/effects/copy-f.sdr
++++ b/code/def_files/data/effects/copy-f.sdr
+@@ -1,4 +1,5 @@
+ #ifdef GL_ES
++precision highp float;
+ precision highp sampler2D;
+ precision highp sampler2DArray;
+ #endif
+diff --git a/code/def_files/data/effects/lighting.sdr b/code/def_files/data/effects/lighting.sdr
+index 00ae3fb2fa0..2166b61de7d 100644
+--- a/code/def_files/data/effects/lighting.sdr
++++ b/code/def_files/data/effects/lighting.sdr
+@@ -8,7 +8,7 @@ const int LT_AMBIENT		= 4;		// Directionless ambient light
+ const float SPEC_FACTOR_NO_SPEC_MAP		= 0.1;
+ const float GLOW_MAP_INTENSITY			= 1.5;
+ const float GLOW_MAP_SRGB_MULTIPLIER	= 3.0;
+-const float PI = 3.14159265359;
++const float PI = 3.14159f;
+ 
+ 
+ vec3 FresnelSchlick(vec3 halfVec, vec3 view, vec3 specColor)
+diff --git a/code/def_files/data/effects/msaa-f.sdr b/code/def_files/data/effects/msaa-f.sdr
+index 002abf1e025..ddee352792e 100644
+--- a/code/def_files/data/effects/msaa-f.sdr
++++ b/code/def_files/data/effects/msaa-f.sdr
+@@ -1,10 +1,11 @@
+-#include "z-compress.sdr"
+ #ifdef GL_ES
+ precision highp float;
+ precision highp int;
+ precision highp sampler2DMS;
+ #endif
+ 
++#include "z-compress.sdr"
++
+ layout(location = 0) out vec4 fragOut0;
+ layout(location = 1) out vec4 fragOut1;
+ layout(location = 2) out vec4 fragOut2;
+@@ -176,7 +177,7 @@ float getMedianDist(ivec2 texel) {
+ 
+ //Fallback, do front first
+ float getMedianDist(ivec2 texel) {
+-	float minDist = -1000000;
++	float minDist = -1000000.0;
+ 	for(int i = 0; i < samples; i++) {
+ 		minDist = max(minDist, uncompress_depth_value(texelFetch(texPos, texel, i).z));
+ 	}
+@@ -190,7 +191,7 @@ float getMedianDist(ivec2 texel) {
+ 
+ void main()
+ {
+-	vec2 texSize = textureSize(texColor);
++	vec2 texSize = vec2(textureSize(texColor));
+ #ifdef VULKAN
+ 	ivec2 texel = ivec2(texSize * fragTexCoord);
+ #else
+@@ -206,7 +207,7 @@ void main()
+ 	vec4 normal = vec4(0);
+ 	vec4 specular = vec4(0);
+ 	vec4 emissive = vec4(0);
+-	float depth = 0;
++	float depth = 0.0;
+ 
+ 	for(int i = 0; i < SAMPLE_CNT; i++) {
+ 		vec4 localPos = texelFetch(texPos, texel, i);
+diff --git a/code/def_files/data/effects/smaa-resolve-f.sdr b/code/def_files/data/effects/smaa-resolve-f.sdr
+index b9a22ed90d8..4151d19ea46 100644
+--- a/code/def_files/data/effects/smaa-resolve-f.sdr
++++ b/code/def_files/data/effects/smaa-resolve-f.sdr
+@@ -1,4 +1,5 @@
+ #ifdef GL_ES
++precision highp float;
+ precision highp sampler2D;
+ #endif
+ 
+diff --git a/code/def_files/data/effects/volumetric-f.sdr b/code/def_files/data/effects/volumetric-f.sdr
+index f1e8726a0ab..6fe0c0e5e51 100644
+--- a/code/def_files/data/effects/volumetric-f.sdr
++++ b/code/def_files/data/effects/volumetric-f.sdr
+@@ -2,6 +2,7 @@
+ precision highp float;
+ precision highp int;
+ precision highp sampler2D;
++precision highp sampler3D;
+ #endif
+ 
+ layout(location = 0) out vec4 fragOut0;
+@@ -83,7 +84,7 @@ void main()
+ #else
+ 	vec4 eyeDirection = p_inv * vec4(fragTexCoord.xy * 2.0 - 1.0, -1, 1);
+ #endif
+-    eyeDirection.w = 0;
++    eyeDirection.w = 0.0;
+     vec3 rayDirection = normalize((v_inv * eyeDirection).xyz);
+ 
+ 	vec4 color_in = texture(composite, fragTexCoord.xy);
+@@ -109,14 +110,14 @@ void main()
+ #endif
+ 
+ 	//The t at which the ray enters the nebula cube
+-	float maxtMin = max(0,max(tMin.x, max(tMin.y, tMin.z)));
++	float maxtMin = max(0.0, max(tMin.x, max(tMin.y, tMin.z)));
+ 	//The t at which the ray leaves the nebula cube
+ 	float mintMax = min(fragDepth, min(tMax.x, min(tMax.y, tMax.z)));
+ 
+ 	//The cumulative one minus alpha value of the nebula. Corresponds to the multiplier of the current step when additively drawing to a fragment for which the steps closer to the camera are already drawn.
+-	float cumOMAlpha = 1;
++	float cumOMAlpha = 1.0;
+ 	//The cumulative distance already travelled through the nebula.
+-	float cumnebdist = 0;
++	float cumnebdist = 0.0;
+ 	//The color of the current fragment
+ 	vec3 cumcolor = vec3(0, 0, 0);
+ 
+@@ -127,6 +128,14 @@ void main()
+ 
+ 	vec3 sidestep = 1.0 / vec3(textureSize(volume_tex, 0));
+ 
++#ifdef GL_ES
++	// The emissive texture has a complete mip chain generated by the engine.
++	ivec2 emissiveSize = textureSize(emissive, 0);
++	float maxEmissiveLod = float(findMSB(max(emissiveSize.x, emissiveSize.y)));
++#else
++	float maxEmissiveLod = float(textureQueryLevels(emissive) - 1);
++#endif
++
+ 	for(float stept = maxtMin; stept < mintMax;) {
+ 		//Step setup
+ 		vec3 position = camera + rayDirection * stept - nebPos;
+@@ -165,7 +174,7 @@ void main()
+ #ifdef NOISE
+ 			//Mix the actual nebula color with the noise color depending on the product of the noise channels multiplied with intensity, smooth-clamped from 0 to 1
+ 			vec3 stepcolor_neb = mix(nebulaColor, noiseColor,
+-				smoothstep(0, 1, (textureGrad(noise_volume_tex, position / noiseColorScale1, gradX, gradY).r + textureGrad(noise_volume_tex, position / noiseColorScale2, gradX, gradY).g) / 2.0 * noiseIntensity));
++				smoothstep(0.0, 1.0, (textureGrad(noise_volume_tex, position / noiseColorScale1, gradX, gradY).r + textureGrad(noise_volume_tex, position / noiseColorScale2, gradX, gradY).g) / 2.0 * noiseIntensity));
+ #else
+ 			vec3 stepcolor_neb = nebulaColor;
+ #endif
+@@ -175,19 +184,19 @@ void main()
+ 			//From the current position in the volumetric cloud, sample towards the sun to test whether or not the current part of the nebula is bright or not
+ 			for(int dlstep = 1; dlstep <= directionalLightSampleSteps; dlstep++){
+ 				//TODO Sample these in a cone towards the sun, not just a line. Also add the high-distance sample for concave nebulae
+-				vec3 dlsteppos = (position - globalLightDirection * (dlstep * directionalLightStepSize)) / nebSize + 0.5;
+-				float dlstepalpha = textureGrad(volume_tex, dlsteppos, gradX, gradY).a * step(0, dlsteppos.x) * step(dlsteppos.x, 1) * step(0, dlsteppos.y) * step(dlsteppos.y, 1) * step(0, dlsteppos.z) * step(dlsteppos.z, 1);
++				vec3 dlsteppos = (position - globalLightDirection * (float(dlstep) * directionalLightStepSize)) / nebSize + 0.5;
++				float dlstepalpha = textureGrad(volume_tex, dlsteppos, gradX, gradY).a * step(0.0, dlsteppos.x) * step(dlsteppos.x, 1.0) * step(0.0, dlsteppos.y) * step(dlsteppos.y, 1.0) * step(0.0, dlsteppos.z) * step(dlsteppos.z, 1.0);
+ 				directionalLightDepth += dlstepalpha * directionalLightStep;
+ 			}
+-			stepcolor_diffuse *= beer_powder_norm * (1 - exp(-directionalLightDepth * 2.0)) * exp(-directionalLightDepth);
++			stepcolor_diffuse *= beer_powder_norm * (1.0 - exp(-directionalLightDepth * 2.0)) * exp(-directionalLightDepth);
+ 
+ 			//Emissive
+ 			cumnebdist += stepcolor_alpha * stepsize_current;
+-			vec3 emissive_lod = textureLod(emissive, fragTexCoord.xy, clamp(cumnebdist * emissiveSpreadFactor, 0, float(textureQueryLevels(emissive) - 1))).rgb;
+-			vec3 stepcolor_emissive = clamp(emissive_lod.rgb * pow(alphalim, 1.0 / (opacitydistance / ((fragDepth - stept) * emissiveFalloff + 0.01))) * emissiveIntensity, 0, 1);
++			vec3 emissive_lod = textureLod(emissive, fragTexCoord.xy, clamp(cumnebdist * emissiveSpreadFactor, 0.0, maxEmissiveLod)).rgb;
++			vec3 stepcolor_emissive = clamp(emissive_lod.rgb * pow(alphalim, 1.0 / (opacitydistance / ((fragDepth - stept) * emissiveFalloff + 0.01))) * emissiveIntensity, 0.0, 1.0);
+ 
+ 			//Step finish
+-			vec3 stepcolor = clamp(stepcolor_diffuse + stepcolor_emissive, 0, 1);
++			vec3 stepcolor = clamp(stepcolor_diffuse + stepcolor_emissive, 0.0, 1.0);
+ 			cumcolor += stepalpha * cumOMAlpha * stepcolor;
+ 		}
+ 
+diff --git a/code/graphics/opengl/es_compatibility.h b/code/graphics/opengl/es_compatibility.h
+index 3cdae8eeb82..5ccece33783 100644
+--- a/code/graphics/opengl/es_compatibility.h
++++ b/code/graphics/opengl/es_compatibility.h
+@@ -236,6 +236,9 @@ inline void glDrawBuffer(GLenum buf)
+ 	}
+ }
+ 
++// ES uses layout(location = ) directly on shader
++#define glBindFragDataLocation(program, colorNumber, name) ((void)0)
++
+ // glPolygonMode() is not supported on ES,  no wireframe, GL_FILL is default, GL_POINTS, and GL_LINES needs an alternative path
+ // Notes: 
+ // -This function is not required to run.
+diff --git a/code/graphics/opengl/gropenglshader.cpp b/code/graphics/opengl/gropenglshader.cpp
+index 7786177df94..335bbceb422 100644
+--- a/code/graphics/opengl/gropenglshader.cpp
++++ b/code/graphics/opengl/gropenglshader.cpp
+@@ -178,6 +178,9 @@ static SCP_string opengl_shader_get_header(shader_type type_id, int flags, bool
+ 
+ #ifndef USE_OPENGL_ES
+ 	sflags << "#version " << GLSL_version << " core\n";
++	if (GLSL_version < 330) {
++		sflags << "#extension GL_ARB_explicit_attrib_location : enable\n";
++	}
+ #else
+ 	sflags << "#version " << GLSL_version << " es\n";
+ #endif
+@@ -495,6 +498,13 @@ void opengl_compile_shader_actual(shader_type sdr, const uint &flags, opengl_sha
+ 				glBindAttribLocation(program->getShaderHandle(), (GLint)i, GL_vertex_attrib_info[i].name.c_str());
+ 			}
+ 
++			// bind fragment data locations before we link the shader
++			glBindFragDataLocation(program->getShaderHandle(), 0, "fragOut0");
++			glBindFragDataLocation(program->getShaderHandle(), 1, "fragOut1");
++			glBindFragDataLocation(program->getShaderHandle(), 2, "fragOut2");
++			glBindFragDataLocation(program->getShaderHandle(), 3, "fragOut3");
++			glBindFragDataLocation(program->getShaderHandle(), 4, "fragOut4");
++
+ 			if (do_shader_caching()) {
+ 				// Enable shader caching
+ 				glProgramParameteri(program->getShaderHandle(), GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+diff --git a/code/graphics/opengl/gropenglstate.cpp b/code/graphics/opengl/gropenglstate.cpp
+index 824bc09b365..060eb6dd421 100644
+--- a/code/graphics/opengl/gropenglstate.cpp
++++ b/code/graphics/opengl/gropenglstate.cpp
+@@ -360,6 +360,13 @@ GLboolean opengl_state::ClipDistance(GLint num, bool state)
+ 
+ 	GLboolean save_state = clipdistance_Status[num];
+ 
++#ifdef USE_OPENGL_ES
++	if (!GLAD_GL_EXT_clip_cull_distance) {
++		clipdistance_Status[num] = state;
++		return save_state;
++	}
++#endif
++
+ 	if (state != clipdistance_Status[num]) {
+ 		if (state) {
+ 			glEnable(GL_CLIP_DISTANCE0+num);
+diff --git a/code/graphics/opengl/gropengltnl.cpp b/code/graphics/opengl/gropengltnl.cpp
+index 7061314fb85..d2f64076d95 100644
+--- a/code/graphics/opengl/gropengltnl.cpp
++++ b/code/graphics/opengl/gropengltnl.cpp
+@@ -732,7 +732,13 @@ void gr_opengl_shadow_map_start(matrix4 *shadow_view_matrix, const matrix *light
+ 
+ 		glClear(GL_DEPTH_BUFFER_BIT);
+ 
++#ifdef USE_OPENGL_ES
++		if (GLAD_GL_EXT_depth_clamp) {
++			glEnable(GL_DEPTH_CLAMP);
++		}
++#else
+ 		glEnable(GL_DEPTH_CLAMP);
++#endif
+ 
+ 		Glowpoint_override_save = Glowpoint_override;
+ 		Glowpoint_override = true;
+@@ -753,7 +759,13 @@ void gr_opengl_shadow_map_end()
+ {
+ 	gr_end_view_matrix();
+ 
++#ifdef USE_OPENGL_ES
++	if (GLAD_GL_EXT_depth_clamp) {
++		glDisable(GL_DEPTH_CLAMP);
++	}
++#else
+ 	glDisable(GL_DEPTH_CLAMP);
++#endif
+ 
+ 	gr_zbuffer_set(ZBUFFER_TYPE_FULL);
+ 	GL_state.PopFramebufferState();
+@@ -1136,6 +1148,12 @@ void opengl_tnl_set_material_nanovg(nanovg_material* material_info) {
+ void opengl_tnl_set_material_decal(decal_material* material_info) {
+ 	opengl_tnl_set_material(material_info, false);
+ 
++#ifdef USE_OPENGL_ES
++	// ES decal outputs use G-buffer locations instead of packed draw-buffer indices.
++	GL_state.SetAlphaBlendModei(2, material_info->get_blend_mode(1));
++	GL_state.SetAlphaBlendModei(4, material_info->get_blend_mode(2));
++#endif
++
+ 	float u_scale, v_scale;
+ 	uint32_t array_index;
+ 
+diff --git a/code/graphics/vulkan/VulkanShaderCompiler.h b/code/graphics/vulkan/VulkanShaderCompiler.h
+index 5a5046d6a5d..a4913e2371d 100644
+--- a/code/graphics/vulkan/VulkanShaderCompiler.h
++++ b/code/graphics/vulkan/VulkanShaderCompiler.h
+@@ -24,7 +24,6 @@ class VulkanShaderCompiler {
+ 	~VulkanShaderCompiler();
+ 
+ 	bool init(bool hwClipDistance);
+-	bool init();
+ 	void shutdown();
+ 
+ 	/**
