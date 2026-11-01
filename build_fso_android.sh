@@ -126,7 +126,7 @@ fi
 
 # Make embedfile
 mkdir tool && cd tool
-cmake .. -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_TOOLS=ON -G Ninja
+cmake .. -DFSO_BUILD_WITH_OPENXR=OFF -DFSO_BUILD_QTFRED=OFF -DFSO_BUILD_TOOLS=ON -DFSO_BUILD_WITH_VULKAN=OFF -G Ninja
 ninja embedfile
 
 cd ..
