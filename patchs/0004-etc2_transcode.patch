@@ -19,7 +19,6 @@ Subject: [PATCH] Implement BCn to ETC2 transcode
  code/graphics/vulkan/VulkanRenderer.cpp |   33 +
  code/graphics/vulkan/VulkanRenderer.h   |   10 +
  code/graphics/vulkan/gr_vulkan.cpp      |    5 +-
- code/localization/localize.cpp          |    3 +-
  code/source_groups.cmake                |    6 +
  code/texcache/tex_cache.cpp             |  260 ++
  code/texcache/tex_cache.h               |   24 +
@@ -655,20 +654,6 @@ index 36bedcb4a03..38c89de234d 100644
  	case gr_capability::CAPABILITY_LARGE_SHADER:
  		// Same troubleshooting switch as OpenGL: -no_large_shaders splits the model
  		// ubershader into per-flag-combination variants for drivers that choke on the
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index 78868daf554..da419ed4554 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -65,7 +65,8 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
- // but internal strings should still increment XSTR_SIZE to avoid collisions.
- // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1936 // This is the next available ID
-+// #define XSTR_SIZE	1938 // This is the next available ID
-+
- 
- // struct to allow for strings.tbl-determined x offset
- // offset is 0 for english, by default
 diff --git a/code/source_groups.cmake b/code/source_groups.cmake
 index 04734bca905..8bf25c927b6 100644
 --- a/code/source_groups.cmake
