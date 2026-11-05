@@ -93,8 +93,8 @@ fi
 echo "NDK ready at $ANDROID_NDK_HOME"
 
 # Clone FSO
-git clone https://github.com/Shivansps/fs2open.github.com --recursive
-cd fs2open.github.com && git checkout android-build
+git clone https://github.com/scp-fs2open/fs2open.github.com --recursive
+cd fs2open.github.com
 
 # Apply local patches (optional). Every *.patch in $PATCHES_DIR is applied, in
 # sorted order, to the freshly checked-out FSO tree. This is a no-op when the
