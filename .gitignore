@@ -1,6 +1,5 @@
 /fso_android
 /prebuilt_android
-patchs/0001-Add-version_override.cmake.patch
-build.cmd
-build libs.cmd
 /fs2open.github.com
+build.cmd
+build_libs.cmd

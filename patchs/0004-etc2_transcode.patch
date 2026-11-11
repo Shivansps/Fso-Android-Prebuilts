@@ -1,7 +1,7 @@
 From d223dbfc69bc9b3732db1bf8fee4b01ad901a1d0 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 16 Sep 2026 19:47:26 -0300
-Subject: [PATCH] Implement BCn to ETC2 transcode
+Subject: [PATCH 01/13] Implement BCn to ETC2 transcode
 
 ---
  code/CMakeLists.txt                     |    2 +
@@ -541,7 +541,7 @@ index 437bc85368d..abd00046e31 100644
  	CAPABILITY_INSTANCED_RENDERING,
  	CAPABILITY_FAST_SHADOWS,
 diff --git a/code/graphics/opengl/es_compatibility.h b/code/graphics/opengl/es_compatibility.h
-index a864be1545e..072a3b6169b 100644
+index 5ccece337..0c66d41d6 100644
 --- a/code/graphics/opengl/es_compatibility.h
 +++ b/code/graphics/opengl/es_compatibility.h
 @@ -49,6 +49,7 @@
@@ -552,7 +552,6 @@ index a864be1545e..072a3b6169b 100644
  #define GL_DEPTH_CLAMP							GL_DEPTH_CLAMP_EXT
  
  //Functions Redefinitions
- #define glBlendFunciARB					glBlendFunci // ES 3.2
 diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
 index 444515b797a..034bfdb7194 100644
 --- a/code/graphics/opengl/gropengl.cpp
@@ -7408,3 +7407,1364 @@ index 0986c04d66d..51e4fbba46d 100644
  	GLAD_GL_ARB_buffer_storage = has_ext("GL_ARB_buffer_storage");
  	GLAD_GL_ARB_debug_output = has_ext("GL_ARB_debug_output");
  	GLAD_GL_ARB_draw_buffers_blend = has_ext("GL_ARB_draw_buffers_blend");
+
+From b2b35a0f3b7d0de4da530810a21d5605c39db2bb Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 12 Oct 2026 17:01:51 -0300
+Subject: [PATCH 02/13] improve text cache size option display and usability
+
+---
+ code/texcache/tex_cache.cpp    | 54 +++++++++++++++++++++++++++-------
+ code/texcache/tex_cache.h      |  3 ++
+ freespace2/freespace.cpp       |  3 ++
+ 3 files changed, 50 insertions(+), 10 deletions(-)
+
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 8a9c363f7d8..518481e21f9 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -1,6 +1,7 @@
+ #include "texcache/tex_cache.h"
+ #include "cfile/cfile.h"
+ #include "options/Option.h"
++#include "cmdline/cmdline.h"
+ 
+ #include "lz4.h"
+ #include <md5.h>
+@@ -14,6 +15,12 @@ static constexpr uint TEX_CACHE_VERSION = 1u;
+ static constexpr uint TEX_CACHE_FLAG_LZ4 = 0x1u;
+ static constexpr int TEX_CACHE_CHKSUM_WINDOW = 65536;
+ 
++//Option values
++float tex_cache_size = 3.0f; // Default value
++static constexpr float TEX_CACHE_OPTION_MAX_SIZE = 30.0f; // Unlimited cache
++static constexpr float TEX_CACHE_OPTION_MIN_SIZE = 0.0f;  // Disabled cache
++//
++
+ static const uint32_t CACHE_LOCATION_FLAGS = CF_LOCATION_ROOT_USER | CF_LOCATION_TYPE_ROOT;
+ 
+ static SCP_string tex_cache_filename(const SCP_string &key)
+@@ -60,6 +67,9 @@ SCP_string tex_cache_make_key(CFILE *dds, tex_cache_type cache_type, uint src_fo
+ 
+ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expected_height, uint expected_mips, int expected_format, size_t expected_size, ubyte *out_data)
+ {
++	if (tex_cache_size <= TEX_CACHE_OPTION_MIN_SIZE || Cmdline_no_transcode_cache) //Cache disabled
++		return false;
++
+ 	const SCP_string name = tex_cache_filename(key);
+ 
+ 	CFILE *fp = cfopen(name.c_str(), "rb", CF_TYPE_CACHE, false, CACHE_LOCATION_FLAGS);
+@@ -132,6 +142,9 @@ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expecte
+ 
+ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips, int format, const ubyte *payload, size_t payload_size)
+ {
++	if (tex_cache_size <= TEX_CACHE_OPTION_MIN_SIZE || Cmdline_no_transcode_cache) //Cache disabled
++		return;
++
+ 	if (payload == nullptr || payload_size == 0) {
+ 		return;
+ 	}
+@@ -189,12 +202,27 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
+ }
+ 
+ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+-	std::pair<const char*, int>{"Texture Transcode Cache", 1936},
+-	std::pair<const char*, int>{"Texture transcode cache size in GBs. 0 for unlimited. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1937})
++	std::pair<const char*, int>{"Texture Transcode Cache", -1}, // TODO: Set localize id after approval
++	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1}) // TODO: Set localize id after approval
+ 	.category(std::make_pair("Graphics", 1825))
+ 	.level(options::ExpertLevel::Advanced)
+-	.range(0.0f, 20.0f)
+-	.default_val(3.0f)
++	.range(TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE)
++	.default_func([]() { return tex_cache_size; })
++	.display([](float value) {
++		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
++			return SCP_string(XSTR("Disabled", 413));
++		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
++			return SCP_string(XSTR("Unlimited", -1)); // TODO: Set localize id after approval
++		SCP_string out;
++		sprintf(out, "%.1f GB", value);
++		return out;
++	})
++	.parser([]() {
++		float value;
++		stuff_float(&value);
++		tex_cache_size = std::clamp(value, TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE);
++	})
++	.bind_to(&tex_cache_size)
+ 	.importance(0)
+ 	.finish();
+ 
+@@ -210,12 +238,12 @@ void tex_cache_prune()
+ 		cf_delete(tname.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
+ 	}
+ 
+-	auto max_bytes = (size_t)(CacheSizeLimit->getValue() * 1000000000);
+-
+ 	// unlimited cache
+-	if (max_bytes <= 0)
++	if (tex_cache_size >= TEX_CACHE_OPTION_MAX_SIZE)
+ 		return;
+ 
++	auto max_bytes = (size_t)(tex_cache_size * 1000000000);
++
+ 	// Check and clear cache
+ 	SCP_vector<SCP_string> names;
+ 	SCP_vector<file_list_info> info;
+@@ -237,8 +265,8 @@ void tex_cache_prune()
+ 		return;
+ 	}
+ 
+-	// Free a minimum of 20%, not the entire cache.
+-	const size_t target = (max_bytes / 5) * 4;
++	// Free a minimum of 20%, not the entire cache. If the cache is disabled clear it completely
++	const size_t target = max_bytes > 0 ? (max_bytes / 5) * 4 : 0;
+ 
+ 	SCP_vector<size_t> order(count);
+ 	for (size_t i = 0; i < count; ++i) {
+@@ -257,4 +285,10 @@ void tex_cache_prune()
+ 			total -= info[idx].size;
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
++
++void tex_cache_disable_option()
++{
++	options::OptionsManager::instance()->setOverride("Graphics.TexCacheSize",
++		std::unique_ptr<json_t>(json_real(tex_cache_size)), "-no_transcode_cache");
++}
+diff --git a/code/texcache/tex_cache.h b/code/texcache/tex_cache.h
+index a0b50786855..024ffd54b7d 100644
+--- a/code/texcache/tex_cache.h
++++ b/code/texcache/tex_cache.h
+@@ -12,6 +12,9 @@ enum tex_cache_type {
+ // Clear the transcode cache if the total file size is over the limit
+ void tex_cache_prune();
+ 
++// Disable the transcode cache option from the configuration menu
++void tex_cache_disable_option();
++
+ // Get the MD5 key hash for the dds texture
+ SCP_string tex_cache_make_key(CFILE *dds, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size);
+ 
+diff --git a/freespace2/freespace.cpp b/freespace2/freespace.cpp
+index 6d974979d11..46665fd9109 100644
+--- a/freespace2/freespace.cpp
++++ b/freespace2/freespace.cpp
+@@ -1921,6 +1921,9 @@ void game_init()
+ 	lcl_init( detect_lang() );	
+ 	lcl_xstr_init();
+ 
++	if (Cmdline_no_transcode_cache) {
++		tex_cache_disable_option();
++	}
+ 	tex_cache_prune(); // Clear texture transcode cache
+ 
+ 	if (Is_standalone) {
+
+From 8a36e4febe0f841d954550fb26312be434a88452 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 3 Nov 2026 01:47:50 -0300
+Subject: [PATCH 03/13] requested changes
+
+---
+ code/ddsutils/ddsutils.cpp           |   2 +-
+ code/graphics/2d.cpp                 |   1 +
+ code/texcache/tex_cache.cpp          |  31 +++++---
+ code/texcache/tex_cache.h            |   2 +-
+ freespace2/freespace.cpp             |   1 -
+ freespace2/levelpaging.cpp           |   3 +
+ lib/etcpak/CMakeLists.txt            |   3 +-
+ test/src/source_groups.cmake         |   4 ++
+ test/src/texcache/test_tex_cache.cpp | 102 +++++++++++++++++++++++++++
+ 9 files changed, 135 insertions(+), 14 deletions(-)
+ create mode 100644 test/src/texcache/test_tex_cache.cpp
+
+diff --git a/code/ddsutils/ddsutils.cpp b/code/ddsutils/ddsutils.cpp
+index dc4bc15deb9..51a2e459d38 100644
+--- a/code/ddsutils/ddsutils.cpp
++++ b/code/ddsutils/ddsutils.cpp
+@@ -532,7 +532,7 @@ int dds_read_bitmap(const char *filename, ubyte *data, ubyte *bpp, int cf_type)
+ 
+ 		if (!Cmdline_no_transcode_cache) {
+ 			//Build the cache MD5 hash
+-			key = tex_cache_make_key(cfp, TEX_CACHE_TYPE_ETC2, dds_header.ddspf.dwFourCC, cache_fmt, static_cast<uint>(etc2_size));
++			key = tex_cache_make_key(cfp, real_name, TEX_CACHE_TYPE_ETC2, dds_header.ddspf.dwFourCC, cache_fmt, static_cast<uint>(etc2_size));
+ 
+ 			//Try to load from a cache file
+ 			if (tex_cache_try_load(key, dds_header.dwWidth, dds_header.dwHeight, out_mips, cache_fmt, etc2_size, data)) {
+diff --git a/code/graphics/2d.cpp b/code/graphics/2d.cpp
+index 76e705b2aa1..6986fc5304e 100644
+--- a/code/graphics/2d.cpp
++++ b/code/graphics/2d.cpp
+@@ -79,6 +79,7 @@ gr_capability_def gr_capabilities[] = {
+ 	GR_CAPABILITY_ENTRY(PERSISTENT_BUFFER_MAPPING),
+ 	gr_capability_def {gr_capability::CAPABILITY_BPTC, "BPTC Texture Compression"}, //This one had a different parse string already!
+ 	gr_capability_def {gr_capability::CAPABILITY_S3TC, "S3TC Texture Compression"},
++	gr_capability_def {gr_capability::CAPABILITY_ETC2, "ETC2 Texture Compression"},
+ 	GR_CAPABILITY_ENTRY(LARGE_SHADER),
+ 	GR_CAPABILITY_ENTRY(INSTANCED_RENDERING),
+ 	GR_CAPABILITY_ENTRY(FAST_SHADOWS),
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 518481e21f9..a153951152f 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -8,8 +8,10 @@
+ 
+ #include <cstring>
+ #include <algorithm>
++#include <limits>
+ 
+-#define TEX_CACHE_VERSION_TAG "tex-v1"
++// Includes a fingerprint of the bundled etcpak sources. Update it when the encoder changes.
++#define TEX_CACHE_VERSION_TAG "tex-v2-etcpak-c779f41fd9eb"
+ static constexpr uint TEX_CACHE_MAGIC = 0x32435445u;
+ static constexpr uint TEX_CACHE_VERSION = 1u;
+ static constexpr uint TEX_CACHE_FLAG_LZ4 = 0x1u;
+@@ -21,7 +23,7 @@ static constexpr float TEX_CACHE_OPTION_MAX_SIZE = 30.0f; // Unlimited cache
+ static constexpr float TEX_CACHE_OPTION_MIN_SIZE = 0.0f;  // Disabled cache
+ //
+ 
+-static const uint32_t CACHE_LOCATION_FLAGS = CF_LOCATION_ROOT_USER | CF_LOCATION_TYPE_ROOT;
++static const uint32_t CACHE_LOCATION_FLAGS = CF_LOCATION_ROOT_USER | CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT;
+ 
+ static SCP_string tex_cache_filename(const SCP_string &key)
+ {
+@@ -33,28 +35,32 @@ static SCP_string tex_cache_temp_filename(const SCP_string &key)
+ 	return SCP_string("tex-") + key + ".cache.tmp";
+ }
+ 
+-SCP_string tex_cache_make_key(CFILE *dds, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size)
++SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size)
+ {
++	const char* name = source_name;
++	if (name == nullptr) {
++		name = "";
++	}
++
++	const auto location = *name != '\0' ? cf_find_file_location(name, cf_get_dir_type(dds)) : CFileLocation();
++	const int64_t src_mtime = static_cast<int64_t>(location.m_time);
+ 	const int saved_pos = cftell(dds);
+ 
+ 	cfseek(dds, 0, CF_SEEK_SET);
+ 
+ 	uint src_crc = 0;
+-	cf_chksum_long(dds, &src_crc, TEX_CACHE_CHKSUM_WINDOW);
++	// Fall back to a full checksum if the source metadata cannot be resolved.
++	cf_chksum_long(dds, &src_crc, location.found ? TEX_CACHE_CHKSUM_WINDOW : -1);
+ 
+ 	const uint src_len = (uint)cfilelength(dds);
+ 
+ 	cfseek(dds, saved_pos, CF_SEEK_SET);
+ 
+-	const char* name = cf_get_filename(dds);
+-	if (name == nullptr) {
+-		name = "";
+-	}
+-
+ 	MD5 md5;
+ 	md5.update(TEX_CACHE_VERSION_TAG, (MD5::size_type)strlen(TEX_CACHE_VERSION_TAG));
+ 	md5.update(reinterpret_cast<const char*>(&cache_type), sizeof(cache_type));
+ 	md5.update(name, (MD5::size_type)strlen(name));
++	md5.update(reinterpret_cast<const char*>(&src_mtime), sizeof(src_mtime));
+ 	md5.update(reinterpret_cast<const char*>(&src_crc), sizeof(src_crc));
+ 	md5.update(reinterpret_cast<const char*>(&src_len), sizeof(src_len));
+ 	md5.update(reinterpret_cast<const char*>(&src_fourcc), sizeof(src_fourcc));
+@@ -96,7 +102,12 @@ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expecte
+ 	                       (width == expected_width) &&
+ 	                       (height == expected_height) &&
+ 	                       (mips == expected_mips) &&
+-	                       (payload_size == (uint)expected_size);
++	                       (payload_size == expected_size) &&
++	                       (payload_size > 0) &&
++	                       (payload_size <= static_cast<uint>(std::numeric_limits<int>::max())) &&
++	                       (stored_size > 0) &&
++	                       (stored_size <= payload_size) &&
++	                       (stored_size == static_cast<uint>(cfilelength(fp) - cftell(fp)));
+ 
+ 	if (!header_ok) {
+ 		cfclose(fp);
+diff --git a/code/texcache/tex_cache.h b/code/texcache/tex_cache.h
+index 024ffd54b7d..8168944a612 100644
+--- a/code/texcache/tex_cache.h
++++ b/code/texcache/tex_cache.h
+@@ -16,7 +16,7 @@ void tex_cache_prune();
+ void tex_cache_disable_option();
+ 
+ // Get the MD5 key hash for the dds texture
+-SCP_string tex_cache_make_key(CFILE *dds, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size);
++SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size);
+ 
+ // Load a transcoded texture from cache if present
+ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expected_height, uint expected_mips, int expected_format, size_t expected_size, ubyte *out_data);
+diff --git a/freespace2/freespace.cpp b/freespace2/freespace.cpp
+index ada9b3fb523..0b931ee9a4b 100644
+--- a/freespace2/freespace.cpp
++++ b/freespace2/freespace.cpp
+@@ -1959,7 +1959,6 @@ void game_init()
+ 	if (Cmdline_no_transcode_cache) {
+ 		tex_cache_disable_option();
+ 	}
+-	tex_cache_prune(); // Clear texture transcode cache
+ 
+ 	if (Is_standalone) {
+ 		// force off some cmdlines if they are on
+diff --git a/freespace2/levelpaging.cpp b/freespace2/levelpaging.cpp
+index d82efbcf026..8dabf2bca05 100644
+--- a/freespace2/levelpaging.cpp
++++ b/freespace2/levelpaging.cpp
+@@ -13,6 +13,7 @@
+ #include "levelpaging.h"
+ 
+ #include "tracing/tracing.h"
++#include "texcache/tex_cache.h"
+ 
+ 
+ // All the page in functions
+@@ -65,6 +66,8 @@ void level_page_in()
+ 	if(!(Game_mode & GM_STANDALONE_SERVER)){
+ 		model_page_in_stop();		// free any loaded models that aren't used
+ 		bm_page_in_stop();
++		// All mission textures are loaded, so cached files can now be evicted safely.
++		tex_cache_prune();
+ 	}
+ 
+ 	mprintf(( "Ending level bitmap paging...\n" ));
+diff --git a/lib/etcpak/CMakeLists.txt b/lib/etcpak/CMakeLists.txt
+index 63793686b05..47d5c2f69e0 100644
+--- a/lib/etcpak/CMakeLists.txt
++++ b/lib/etcpak/CMakeLists.txt
+@@ -1,6 +1,7 @@
+ set(ETCPAK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/etcpak")
+ 
+ # Note: BC7 encoder was commented out in ProcessDxtc as it needs C++20 and not included
++# Keep ProcessDxtc for planned transcoding to BC/DXT; only the ETC2 encoder is used for now.
+ set(ETCPAK_SOURCES
+ 	"${ETCPAK_DIR}/ProcessRGB.cpp"
+ 	"${ETCPAK_DIR}/Tables.cpp"
+@@ -15,4 +16,4 @@ suppress_warnings(etcpak)
+ 
+ set_target_properties(etcpak PROPERTIES FOLDER "3rdparty")
+ 
+-target_link_libraries(etcpak PUBLIC compiler)
+\ No newline at end of file
++target_link_libraries(etcpak PUBLIC compiler)
+diff --git a/test/src/source_groups.cmake b/test/src/source_groups.cmake
+index 1c268dda86e..f0f6f6622c6 100644
+--- a/test/src/source_groups.cmake
++++ b/test/src/source_groups.cmake
+@@ -17,6 +17,10 @@ add_file_folder("CFile"
+     cfile/cfile.cpp
+ )
+ 
++add_file_folder("Texture Cache"
++    texcache/test_tex_cache.cpp
++)
++
+ add_file_folder("Globalincs"
+     globalincs/test_flagset.cpp
+     globalincs/test_safe_strings.cpp
+diff --git a/test/src/texcache/test_tex_cache.cpp b/test/src/texcache/test_tex_cache.cpp
+new file mode 100644
+index 00000000000..6641f9df146
+--- /dev/null
++++ b/test/src/texcache/test_tex_cache.cpp
+@@ -0,0 +1,102 @@
++#include "texcache/tex_cache.h"
++#include "util/FSTestFixture.h"
++
++#include <chrono>
++#include <filesystem>
++#include <limits>
++
++extern float tex_cache_size;
++
++class TextureCacheTest : public test::FSTestFixture {
++protected:
++	float saved_cache_size = tex_cache_size;
++	const char* key = "unittest-texture-cache";
++	const char* source_name = "unittest-texture-cache.dds";
++
++	void SetUp() override
++	{
++		test::FSTestFixture::SetUp();
++		tex_cache_size = 3.0f;
++	}
++
++	void TearDown() override
++	{
++		cf_delete("tex-unittest-texture-cache.cache", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++		cf_delete(source_name, CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++		tex_cache_size = saved_cache_size;
++		test::FSTestFixture::TearDown();
++	}
++
++	void write_source(const SCP_vector<ubyte>& data)
++	{
++		std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE, false,
++			CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT));
++		ASSERT_NE(nullptr, fp);
++		ASSERT_EQ(static_cast<int>(data.size()), cfwrite(data.data(), 1, static_cast<int>(data.size()), fp.get()));
++	}
++
++	SCP_string source_key()
++	{
++		const auto location = cf_find_file_location(source_name, CF_TYPE_CACHE,
++			CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++		std::unique_ptr<CFILE> fp(cfopen(location.full_name.c_str(), "rb", CF_TYPE_CACHE));
++		EXPECT_NE(nullptr, fp);
++		if (!fp) {
++			return {};
++		}
++		cfseek(fp.get(), 128, CF_SEEK_SET);
++		auto result = tex_cache_make_key(fp.get(), location.full_name.c_str(), TEX_CACHE_TYPE_ETC2, 0, 0, 16);
++		EXPECT_EQ(128, cftell(fp.get()));
++		return result;
++	}
++};
++
++TEST_F(TextureCacheTest, portable_round_trip_and_prune)
++{
++	// FSTestFixture runs in portable mode, without a user root.
++	SCP_vector<ubyte> payload(1024, 42);
++	SCP_vector<ubyte> loaded(payload.size());
++	tex_cache_store(key, 32, 32, 1, 0, payload.data(), payload.size());
++	ASSERT_TRUE(tex_cache_try_load(key, 32, 32, 1, 0, loaded.size(), loaded.data()));
++	EXPECT_EQ(payload, loaded);
++
++	tex_cache_size = 0.0f;
++	tex_cache_prune();
++	EXPECT_FALSE(cf_find_file_location("tex-unittest-texture-cache.cache", CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT).found);
++}
++
++TEST_F(TextureCacheTest, repaint_after_checksum_window_changes_key)
++{
++	SCP_vector<ubyte> data(128 * 1024, 42);
++	write_source(data);
++	const auto location = cf_find_file_location(source_name, CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++	ASSERT_TRUE(location.found);
++	const auto original_time = std::filesystem::last_write_time(location.full_name.c_str());
++	const auto original_key = source_key();
++	ASSERT_FALSE(original_key.empty());
++	std::filesystem::last_write_time(location.full_name.c_str(), original_time + std::chrono::seconds(10));
++	EXPECT_NE(original_key, source_key());
++
++	// Same name, length and first 64 KB; only a lower part of the texture changes.
++	data[96 * 1024] = 43;
++	write_source(data);
++	std::filesystem::last_write_time(location.full_name.c_str(), original_time + std::chrono::seconds(20));
++	EXPECT_NE(original_key, source_key());
++}
++
++TEST_F(TextureCacheTest, oversized_stored_payload_is_rejected)
++{
++	std::unique_ptr<CFILE> fp(cfopen("tex-unittest-texture-cache.cache", "wb", CF_TYPE_CACHE, false,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT));
++	ASSERT_NE(nullptr, fp);
++	const uint header[] = {0x32435445u, 1, 0, 0, 4, 4, 1, 16, std::numeric_limits<uint>::max(), 0};
++	for (auto field : header) {
++		cfwrite_uint(field, fp.get());
++	}
++	fp.reset();
++
++	ubyte loaded[16] = {};
++	EXPECT_FALSE(tex_cache_try_load(key, 4, 4, 1, 0, sizeof(loaded), loaded));
++}
+
+From 6f092969e30ea74d6d762913d03e8a75513f0d4d Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 3 Nov 2026 02:03:30 -0300
+Subject: [PATCH 04/13] Unify vulkan texture support probe
+
+---
+ code/graphics/vulkan/VulkanTexture.cpp | 47 ++++----------------------
+ 1 file changed, 6 insertions(+), 41 deletions(-)
+
+diff --git a/code/graphics/vulkan/VulkanTexture.cpp b/code/graphics/vulkan/VulkanTexture.cpp
+index 73375a93109..6be11c6c87c 100644
+--- a/code/graphics/vulkan/VulkanTexture.cpp
++++ b/code/graphics/vulkan/VulkanTexture.cpp
+@@ -247,47 +247,12 @@ bool VulkanTextureManager::init(vk::Device device, vk::PhysicalDevice physicalDe
+ 		return false;
+ 	}
+ 
+-	// Check BCx and ETC2 Support
+-	auto features = m_physicalDevice.getFeatures();
+-	bool supportsETC2 = features.textureCompressionETC2;
+-	bool supportsBC = features.textureCompressionBC;
+-
+-	if (!supportsETC2) {
+-		std::array<vk::Format, 6> etcFormats = {vk::Format::eEtc2R8G8B8UnormBlock,
+-			vk::Format::eEtc2R8G8B8SrgbBlock,
+-			vk::Format::eEtc2R8G8B8A1UnormBlock,
+-			vk::Format::eEtc2R8G8B8A1SrgbBlock,
+-			vk::Format::eEtc2R8G8B8A8UnormBlock,
+-			vk::Format::eEtc2R8G8B8A8SrgbBlock};
+-
+-		for (auto fmt : etcFormats) {
+-			auto props = m_physicalDevice.getFormatProperties(fmt);
+-			if (props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImage) {
+-				supportsETC2 = true;
+-				break;
+-			}
+-		}
+-	}
+-
+-	if (!supportsBC) {
+-		std::array<vk::Format, 4> bcFormats = {
+-			vk::Format::eBc1RgbaUnormBlock, // DXT1
+-			vk::Format::eBc2UnormBlock,     // DXT3
+-			vk::Format::eBc3UnormBlock,     // DXT5
+-			vk::Format::eBc7UnormBlock      // BC7
+-		};
+-
+-		for (auto fmt : bcFormats) {
+-			auto props = m_physicalDevice.getFormatProperties(fmt);
+-			if (props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImage) {
+-				supportsBC = true;
+-				break;
+-			}
+-		}
+-	}
+-
+-	mprintf(("VulkanTextureManager: ETC2 Texture Support = %s\n", supportsETC2 ? "YES" : "NO"));
+-	mprintf(("VulkanTextureManager: BCn Texture Support = %s\n", supportsBC ? "YES" : "NO"));
++	// Report the same compression capabilities used by the renderer.
++	const auto* renderer = getRendererInstance();
++	mprintf(("VulkanTextureManager: Texture Support: ETC2=%s, S3TC=%s, BC7=%s\n",
++		renderer->isTextureCompressionETC2Supported() ? "YES" : "NO",
++		renderer->isTextureCompressionS3TCSupported() ? "YES" : "NO",
++		renderer->isTextureCompressionBCSupported() ? "YES" : "NO"));
+ 
+ 	m_initialized = true;
+ 	return true;
+
+From 7c4b472a1832fbfec905e6166945f1a0ec52795a Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 3 Nov 2026 02:06:50 -0300
+Subject: [PATCH 05/13] correct cache version tag
+
+---
+ code/texcache/tex_cache.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index a153951152f..5c9e3a4c601 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -11,7 +11,7 @@
+ #include <limits>
+ 
+ // Includes a fingerprint of the bundled etcpak sources. Update it when the encoder changes.
+-#define TEX_CACHE_VERSION_TAG "tex-v2-etcpak-c779f41fd9eb"
++#define TEX_CACHE_VERSION_TAG "tex-v1-etcpak-c779f41fd9eb"
+ static constexpr uint TEX_CACHE_MAGIC = 0x32435445u;
+ static constexpr uint TEX_CACHE_VERSION = 1u;
+ static constexpr uint TEX_CACHE_FLAG_LZ4 = 0x1u;
+
+From d61c97cbd156ad695422cfee091054b9eb099577 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 3 Nov 2026 18:56:03 -0300
+Subject: [PATCH 06/13] fix clang-tidy issue
+
+---
+ code/texcache/tex_cache.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 5c9e3a4c601..834bc4c382c 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -43,7 +43,7 @@ SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_typ
+ 	}
+ 
+ 	const auto location = *name != '\0' ? cf_find_file_location(name, cf_get_dir_type(dds)) : CFileLocation();
+-	const int64_t src_mtime = static_cast<int64_t>(location.m_time);
++	const auto src_mtime = static_cast<int64_t>(location.m_time);
+ 	const int saved_pos = cftell(dds);
+ 
+ 	cfseek(dds, 0, CF_SEEK_SET);
+
+From f12fe5ab42e41c3e9c889dccf80c3282b1d09832 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Thu, 5 Nov 2026 19:37:00 -0300
+Subject: [PATCH 07/13] set loc ids
+
+---
+ code/localization/localize.cpp | 2 +-
+ code/texcache/tex_cache.cpp    | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
+index 978d9fcd8..7024776af 100644
+--- a/code/localization/localize.cpp
++++ b/code/localization/localize.cpp
+@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
+ // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
+ // but internal strings should still increment XSTR_SIZE to avoid collisions.
+ // retail XSTR_SIZE = 1570
+-// #define XSTR_SIZE	1940 // This is the next available ID
++// #define XSTR_SIZE	1943 // This is the next available ID
+ 
+ // struct to allow for strings.tbl-determined x offset
+ // offset is 0 for english, by default
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 834bc4c382c..21f96d4da00 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -213,8 +213,8 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
+ }
+ 
+ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+-	std::pair<const char*, int>{"Texture Transcode Cache", -1}, // TODO: Set localize id after approval
+-	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1}) // TODO: Set localize id after approval
++	std::pair<const char*, int>{"Texture Transcode Cache", 1940},
++	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1941})
+ 	.category(std::make_pair("Graphics", 1825))
+ 	.level(options::ExpertLevel::Advanced)
+ 	.range(TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE)
+@@ -223,7 +223,7 @@ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+ 		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
+ 			return SCP_string(XSTR("Disabled", 413));
+ 		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
+-			return SCP_string(XSTR("Unlimited", -1)); // TODO: Set localize id after approval
++			return SCP_string(XSTR("Unlimited", 1942));
+ 		SCP_string out;
+ 		sprintf(out, "%.1f GB", value);
+ 		return out;
+
+From 679e80cc6e2a1655db5c7d3be9a72722cb7259da Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 7 Nov 2026 19:12:37 -0300
+Subject: [PATCH 08/13] Cache hit modifies mtime and min textures sizes
+ consideration in trancoding
+
+---
+ code/ddsutils/ddsutils.cpp           |   8 +-
+ code/graphics/opengl/gropengl.cpp    |   4 +-
+ code/texcache/tex_cache.cpp          |   9 ++
+ test/src/ddsutils/test_ddsutils.cpp  | 122 +++++++++++++++++++++++++++
+ test/src/source_groups.cmake         |   4 +
+ test/src/texcache/test_tex_cache.cpp |  31 +++++++
+ 6 files changed, 173 insertions(+), 5 deletions(-)
+ create mode 100644 test/src/ddsutils/test_ddsutils.cpp
+
+diff --git a/code/ddsutils/ddsutils.cpp b/code/ddsutils/ddsutils.cpp
+index 51a2e459d38..77ac3ab9c47 100644
+--- a/code/ddsutils/ddsutils.cpp
++++ b/code/ddsutils/ddsutils.cpp
+@@ -109,12 +109,13 @@ static size_t compute_etc2_size(const DDS_HEADER& dds_header, uint block_bytes)
+ // of textures.
+ //
+ // NOTE: modifies header!!
+-// ETC2: For converting to ETC2 limit all to 4096x4096 or half-size
++// ETC2: Limit to 4096x4096; halve smaller textures only when both dimensions exceed 256.
+ // 
+ // returns: number of mipmap levels to skip
+ static uint conversion_resize(DDS_HEADER& dds_header, dds_conv_target target)
+ {
+ 	const size_t MAX_SIZE = (target == dds_conv_target::etc2) ? 4096 : 1024;
++	constexpr uint ETC2_MIN_SIZE = 256;
+ 	uint width, height, depth, offset = 0;
+ 
+ 	if (dds_header.dwMipMapCount <= 1) {
+@@ -140,8 +141,9 @@ static uint conversion_resize(DDS_HEADER& dds_header, dds_conv_target target)
+ 		++offset;
+ 	}
+ 
+-	// For ETC2 conversion: if we are not limiting by MAX_SIZE, drop a level (50% size reduction)
+-	if ((target == dds_conv_target::etc2) && (offset == 0) && (offset < dds_header.dwMipMapCount - 1) && (width > 4) && (height > 4)) {
++	// Keep small textures at its original size when taking an extra ETC2 mip level.
++	if ((target == dds_conv_target::etc2) && (offset == 0) && (offset < dds_header.dwMipMapCount - 1)
++		&& (width > ETC2_MIN_SIZE) && (height > ETC2_MIN_SIZE)) {
+ 		width >>= 1;
+ 		height >>= 1;
+ 		depth >>= 1;
+diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
+index 5a880149e94..1fce558fc81 100644
+--- a/code/graphics/opengl/gropengl.cpp
++++ b/code/graphics/opengl/gropengl.cpp
+@@ -1616,9 +1616,9 @@ bool gr_opengl_is_capable(gr_capability capability)
+ 	case gr_capability::CAPABILITY_PERSISTENT_BUFFER_MAPPING:
+ 		return GLAD_GL_ARB_buffer_storage != 0;
+ 	case gr_capability::CAPABILITY_BPTC:
+-		return GLAD_GL_ARB_texture_compression_bptc != 0;
++		return false;//GLAD_GL_ARB_texture_compression_bptc != 0;
+ 	case gr_capability::CAPABILITY_S3TC:
+-		return GLAD_GL_EXT_texture_compression_s3tc != 0;
++		return false;//GLAD_GL_EXT_texture_compression_s3tc != 0;
+ 	case gr_capability::CAPABILITY_ETC2:
+ 		return GLAD_GL_ARB_ES3_compatibility != 0;
+ 	case gr_capability::CAPABILITY_LARGE_SHADER:
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 21f96d4da00..2da4ff635a9 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include <cstring>
+ #include <algorithm>
++#include <filesystem>
+ #include <limits>
+ 
+ // Includes a fingerprint of the bundled etcpak sources. Update it when the encoder changes.
+@@ -148,6 +149,14 @@ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expecte
+ 		return false;
+ 	}
+ 
++	// Pruning uses mtime as the last-use time. Only touch fully validated, loose cache files.
++	const auto location = cf_find_file_location(name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
++	if (location.found && location.offset == 0 && location.data_ptr == nullptr) {
++		std::error_code error;
++		std::filesystem::last_write_time(std::filesystem::u8path(location.full_name.c_str()),
++			std::filesystem::file_time_type::clock::now(), error);
++	}
++
+ 	return true;
+ }
+ 
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+new file mode 100644
+index 00000000000..45d97d83820
+--- /dev/null
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -0,0 +1,122 @@
++#include "cmdline/cmdline.h"
++#include "ddsutils/ddsutils.h"
++#include "graphics/2d.h"
++#include "util/FSTestFixture.h"
++
++class DDSConversionResizeTest : public test::FSTestFixture {
++protected:
++	std::function<bool(gr_capability)> saved_capability_query;
++	bool saved_no_cache = false;
++	const char* source_name = "unittest-dds-resize.dds";
++
++	void SetUp() override
++	{
++		test::FSTestFixture::SetUp();
++		saved_capability_query = gr_screen.gf_is_capable;
++		gr_screen.gf_is_capable = [](gr_capability capability) {
++			return capability == gr_capability::CAPABILITY_ETC2;
++		};
++		saved_no_cache = Cmdline_no_transcode_cache;
++		Cmdline_no_transcode_cache = true;
++	}
++
++	void TearDown() override
++	{
++		cf_delete(source_name, CF_TYPE_CACHE);
++		Cmdline_no_transcode_cache = saved_no_cache;
++		gr_screen.gf_is_capable = saved_capability_query;
++		test::FSTestFixture::TearDown();
++	}
++
++	void write_header(CFILE* fp, uint width, uint height, uint mips)
++	{
++		// A standard 124-byte DDS header with a DXT1 pixel format.
++		uint header[31] = {};
++		header[0] = 124;
++		header[1] = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT | DDSD_MIPMAPCOUNT;
++		header[2] = height;
++		header[3] = width;
++		header[5] = 1;
++		header[6] = mips;
++		header[18] = 32;
++		header[19] = DDPF_FOURCC;
++		header[20] = FOURCC_DXT1;
++		header[26] = DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP;
++		cfwrite_uint(DDS_FILECODE, fp);
++		for (auto field : header) {
++			cfwrite_uint(field, fp);
++		}
++	}
++
++	void check_dimensions(uint width, uint height, int expected_width, int expected_height,
++		int expected_mips = 3, uint input_mips = 3, int expected_format = DDS_ETC2_RGB)
++	{
++		SCOPED_TRACE(::testing::Message() << width << "x" << height);
++		std::unique_ptr<CFILE> fp(ctmpfile());
++		ASSERT_NE(nullptr, fp);
++		write_header(fp.get(), width, height, input_mips);
++		cfseek(fp.get(), 0, CF_SEEK_SET);
++		int actual_width, actual_height, actual_mips, actual_format;
++		ASSERT_EQ(DDS_ERROR_NONE, dds_read_header(nullptr, fp.get(), &actual_width, &actual_height,
++			nullptr, &actual_format, &actual_mips));
++		EXPECT_EQ(expected_width, actual_width);
++		EXPECT_EQ(expected_height, actual_height);
++		EXPECT_EQ(expected_mips, actual_mips);
++		EXPECT_EQ(expected_format, actual_format);
++	}
++};
++
++TEST_F(DDSConversionResizeTest, keeps_small_and_narrow_etc2_textures_at_original_size)
++{
++	check_dimensions(128, 128, 128, 128);
++	check_dimensions(256, 256, 256, 256);
++	check_dimensions(512, 512, 512, 512);
++	check_dimensions(1024, 512, 1024, 512);
++	check_dimensions(256, 2048, 256, 2048);
++}
++
++TEST_F(DDSConversionResizeTest, halves_large_etc2_textures_and_keeps_the_4096_cap)
++{
++	check_dimensions(1024, 1024, 512, 512, 2);
++	check_dimensions(2048, 2048, 1024, 1024, 2);
++	check_dimensions(4096, 4096, 2048, 2048, 2);
++	check_dimensions(8192, 8192, 4096, 4096, 2);
++	check_dimensions(1024, 1024, 1024, 1024, 1, 1);
++}
++
++TEST_F(DDSConversionResizeTest, software_fallback_only_resizes_above_1024)
++{
++	gr_screen.gf_is_capable = [](gr_capability) { return false; };
++	check_dimensions(128, 128, 128, 128, 3, 3, DDS_UNCOMPRESSED);
++	check_dimensions(512, 512, 512, 512, 3, 3, DDS_UNCOMPRESSED);
++	check_dimensions(1024, 1024, 1024, 1024, 3, 3, DDS_UNCOMPRESSED);
++	check_dimensions(2048, 2048, 1024, 1024, 2, 3, DDS_UNCOMPRESSED);
++}
++
++TEST_F(DDSConversionResizeTest, small_etc2_bitmap_matches_the_reported_header_size)
++{
++	std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE));
++	ASSERT_NE(nullptr, fp);
++	write_header(fp.get(), 128, 128, 4);
++	SCP_vector<ubyte> blocks(10880, 0); // DXT1 levels: 128, 64, 32 and 16.
++	ASSERT_EQ(static_cast<int>(blocks.size()), cfwrite(blocks.data(), 1, static_cast<int>(blocks.size()), fp.get()));
++	fp.reset();
++	fp.reset(cfopen(source_name, "rb", CF_TYPE_CACHE));
++	ASSERT_NE(nullptr, fp);
++	int width, height, levels;
++	size_t size = 0;
++	ASSERT_EQ(DDS_ERROR_NONE, dds_read_header(nullptr, fp.get(), &width, &height, nullptr, nullptr, &levels, &size));
++	EXPECT_EQ(128, width);
++	EXPECT_EQ(128, height);
++	EXPECT_EQ(4, levels);
++	ASSERT_EQ(blocks.size(), size);
++	fp.reset();
++
++	SCP_vector<ubyte> data(size + 16, 0xcd);
++	ubyte bpp = 0;
++	ASSERT_EQ(DDS_ERROR_NONE, dds_read_bitmap(source_name, data.data(), &bpp, CF_TYPE_CACHE));
++	EXPECT_EQ(24, bpp);
++	for (size_t i = size; i < data.size(); ++i) {
++		EXPECT_EQ(0xcd, data[i]);
++	}
++}
+diff --git a/test/src/source_groups.cmake b/test/src/source_groups.cmake
+index 94f950645de..eca02763f3e 100644
+--- a/test/src/source_groups.cmake
++++ b/test/src/source_groups.cmake
+@@ -21,6 +21,10 @@ add_file_folder("Texture Cache"
+     texcache/test_tex_cache.cpp
+ )
+ 
++add_file_folder("DDS Utils"
++    ddsutils/test_ddsutils.cpp
++)
++
+ add_file_folder("Globalincs"
+     globalincs/test_flagset.cpp
+     globalincs/test_safe_strings.cpp
+diff --git a/test/src/texcache/test_tex_cache.cpp b/test/src/texcache/test_tex_cache.cpp
+index 6641f9df146..72781664a17 100644
+--- a/test/src/texcache/test_tex_cache.cpp
++++ b/test/src/texcache/test_tex_cache.cpp
+@@ -22,6 +22,7 @@ class TextureCacheTest : public test::FSTestFixture {
+ 	void TearDown() override
+ 	{
+ 		cf_delete("tex-unittest-texture-cache.cache", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++		cf_delete("tex-unittest-texture-cache-cold.cache", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
+ 		cf_delete(source_name, CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
+ 		tex_cache_size = saved_cache_size;
+ 		test::FSTestFixture::TearDown();
+@@ -100,3 +101,33 @@ TEST_F(TextureCacheTest, oversized_stored_payload_is_rejected)
+ 	ubyte loaded[16] = {};
+ 	EXPECT_FALSE(tex_cache_try_load(key, 4, 4, 1, 0, sizeof(loaded), loaded));
+ }
++
++TEST_F(TextureCacheTest, cache_hit_refreshes_mtime_and_survives_pruning)
++{
++	SCP_vector<ubyte> payload(1024, 42);
++	SCP_vector<ubyte> loaded(payload.size());
++	tex_cache_store(key, 32, 32, 1, 0, payload.data(), payload.size());
++	tex_cache_store("unittest-texture-cache-cold", 32, 32, 1, 0, payload.data(), payload.size());
++	const auto hot = cf_find_file_location("tex-unittest-texture-cache.cache", CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++	const auto cold = cf_find_file_location("tex-unittest-texture-cache-cold.cache", CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++	ASSERT_TRUE(hot.found);
++	ASSERT_TRUE(cold.found);
++
++	const auto now = std::filesystem::file_time_type::clock::now();
++	std::filesystem::last_write_time(hot.full_name.c_str(), now - std::chrono::hours(48));
++	std::filesystem::last_write_time(cold.full_name.c_str(), now - std::chrono::hours(24));
++	ASSERT_TRUE(tex_cache_try_load(key, 32, 32, 1, 0, loaded.size(), loaded.data()));
++	EXPECT_EQ(payload, loaded);
++	EXPECT_GT(std::filesystem::last_write_time(hot.full_name.c_str()),
++		std::filesystem::last_write_time(cold.full_name.c_str()));
++
++	// Leave room for one entry, so the hit must displace the unused entry.
++	const auto entry_size = std::filesystem::file_size(hot.full_name.c_str());
++	ASSERT_EQ(entry_size, std::filesystem::file_size(cold.full_name.c_str()));
++	tex_cache_size = static_cast<float>(entry_size * 3 / 2) / 1000000000.0f;
++	tex_cache_prune();
++	EXPECT_TRUE(std::filesystem::exists(hot.full_name.c_str()));
++	EXPECT_FALSE(std::filesystem::exists(cold.full_name.c_str()));
++}
+
+From fb1a8a2fb0f073269fd23e3dfeea2523cd37f64f Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 7 Nov 2026 19:33:32 -0300
+Subject: [PATCH 09/13] remove test change
+
+---
+ code/graphics/opengl/gropengl.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
+index 1fce558fc81..5a880149e94 100644
+--- a/code/graphics/opengl/gropengl.cpp
++++ b/code/graphics/opengl/gropengl.cpp
+@@ -1616,9 +1616,9 @@ bool gr_opengl_is_capable(gr_capability capability)
+ 	case gr_capability::CAPABILITY_PERSISTENT_BUFFER_MAPPING:
+ 		return GLAD_GL_ARB_buffer_storage != 0;
+ 	case gr_capability::CAPABILITY_BPTC:
+-		return false;//GLAD_GL_ARB_texture_compression_bptc != 0;
++		return GLAD_GL_ARB_texture_compression_bptc != 0;
+ 	case gr_capability::CAPABILITY_S3TC:
+-		return false;//GLAD_GL_EXT_texture_compression_s3tc != 0;
++		return GLAD_GL_EXT_texture_compression_s3tc != 0;
+ 	case gr_capability::CAPABILITY_ETC2:
+ 		return GLAD_GL_ARB_ES3_compatibility != 0;
+ 	case gr_capability::CAPABILITY_LARGE_SHADER:
+
+From 5671115b53513c339fd65fa13c3ae183ac04e2cb Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 7 Nov 2026 20:56:15 -0300
+Subject: [PATCH 10/13] adjust test
+
+---
+ test/src/ddsutils/test_ddsutils.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index 45d97d83820..1d0a214ca97 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -70,13 +70,14 @@ TEST_F(DDSConversionResizeTest, keeps_small_and_narrow_etc2_textures_at_original
+ {
+ 	check_dimensions(128, 128, 128, 128);
+ 	check_dimensions(256, 256, 256, 256);
+-	check_dimensions(512, 512, 512, 512);
+-	check_dimensions(1024, 512, 1024, 512);
++	check_dimensions(1024, 256, 1024, 256);
+ 	check_dimensions(256, 2048, 256, 2048);
+ }
+ 
+ TEST_F(DDSConversionResizeTest, halves_large_etc2_textures_and_keeps_the_4096_cap)
+ {
++	check_dimensions(512, 512, 256, 256, 2);
++	check_dimensions(1024, 512, 512, 256, 2);
+ 	check_dimensions(1024, 1024, 512, 512, 2);
+ 	check_dimensions(2048, 2048, 1024, 1024, 2);
+ 	check_dimensions(4096, 4096, 2048, 2048, 2);
+
+From c6f7b66f03ca21649138ab9b1d90787feb1e0d9b Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 7 Nov 2026 21:18:46 -0300
+Subject: [PATCH 11/13] Update test_ddsutils.cpp
+
+---
+ test/src/ddsutils/test_ddsutils.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index 1d0a214ca97..6f1c0a72a3b 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -28,7 +28,7 @@ class DDSConversionResizeTest : public test::FSTestFixture {
+ 		test::FSTestFixture::TearDown();
+ 	}
+ 
+-	void write_header(CFILE* fp, uint width, uint height, uint mips)
++	static void write_header(CFILE* fp, uint width, uint height, uint mips)
+ 	{
+ 		// A standard 124-byte DDS header with a DXT1 pixel format.
+ 		uint header[31] = {};
+
+From 2707a9a73a32e7484aad38f3042f720ab4fbfc7f Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Sat, 7 Nov 2026 22:03:27 -0300
+Subject: [PATCH 12/13] Update test_ddsutils.cpp
+
+---
+ test/src/ddsutils/test_ddsutils.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index 6f1c0a72a3b..663d4ef4d24 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -48,7 +48,7 @@ class DDSConversionResizeTest : public test::FSTestFixture {
+ 		}
+ 	}
+ 
+-	void check_dimensions(uint width, uint height, int expected_width, int expected_height,
++	static void check_dimensions(uint width, uint height, int expected_width, int expected_height,
+ 		int expected_mips = 3, uint input_mips = 3, int expected_format = DDS_ETC2_RGB)
+ 	{
+ 		SCOPED_TRACE(::testing::Message() << width << "x" << height);
+
+From e872f0269c26b98181a13e16298167eb93e1fd77 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 10 Nov 2026 20:06:59 -0300
+Subject: [PATCH 13/13] Properly deal with cockpit gauges on resized textures
+
+---
+ code/bmpman/bm_internal.h           |  4 ++
+ code/bmpman/bmpman.cpp              | 31 +++++++++--
+ code/bmpman/bmpman.h                |  7 +++
+ code/ddsutils/ddsutils.cpp          |  9 +++-
+ code/ddsutils/ddsutils.h            |  4 +-
+ code/ship/ship.cpp                  | 33 +++++++++---
+ test/src/ddsutils/test_ddsutils.cpp | 79 ++++++++++++++++++++++++++++-
+ 7 files changed, 153 insertions(+), 14 deletions(-)
+
+diff --git a/code/bmpman/bm_internal.h b/code/bmpman/bm_internal.h
+index b5a0aa82605..afc26aaff59 100644
+--- a/code/bmpman/bm_internal.h
++++ b/code/bmpman/bm_internal.h
+@@ -73,6 +73,10 @@ struct bitmap_entry {
+ 	uint  used_flags;       //!< What flags it was accessed thru
+ 	int   load_count;
+ 
++	// File dimensions before texture conversion; zero uses the current bitmap dimensions.
++	int original_width;
++	int original_height;
++
+ 	bitmap bm;              //!< Bitmap info
+ 
+ 	bm_extra_info info;     //!< Data for animations and user bitmaps
+diff --git a/code/bmpman/bmpman.cpp b/code/bmpman/bmpman.cpp
+index 1ec9b88f755..f564f691a4d 100644
+--- a/code/bmpman/bmpman.cpp
++++ b/code/bmpman/bmpman.cpp
+@@ -959,6 +959,23 @@ int bm_get_info(int handle, int *w, int * h, uint* flags, int *nframes, int *fps
+ 	}
+ }
+ 
++int bm_get_original_size(int handle, int* w, int* h)
++{
++	const int result = bm_get_info(handle, w, h);
++	if (result < 0) {
++		return result;
++	}
++
++	const auto* entry = bm_get_entry(handle);
++	if (w && entry->original_width > 0) {
++		*w = entry->original_width;
++	}
++	if (h && entry->original_height > 0) {
++		*h = entry->original_height;
++	}
++	return result;
++}
++
+ int bm_get_depth(int handle, int* depth) {
+ 	bitmap* bmp;
+ 
+@@ -1132,12 +1149,13 @@ int bm_is_valid(int handle) {
+ //			c_type		= output for an updated BM_TYPE_*
+ //			mm_lvl		= number of mipmap levels for the image
+ //			size		= size of the data contained in the image
+-static int bm_load_info(BM_TYPE type, const char *filename, CFILE *img_cfp, int *w, int *h, int *bpp, BM_TYPE *c_type, int *mm_lvl, size_t *size)
++static int bm_load_info(BM_TYPE type, const char *filename, CFILE *img_cfp, int *w, int *h, int *bpp, BM_TYPE *c_type, int *mm_lvl, size_t *size,
++	int *original_width = nullptr, int *original_height = nullptr)
+ {
+ 	int dds_ct;
+ 
+ 	if (type == BM_TYPE_DDS) {
+-		int dds_error = dds_read_header(filename, img_cfp, w, h, bpp, &dds_ct, mm_lvl, size);
++		int dds_error = dds_read_header(filename, img_cfp, w, h, bpp, &dds_ct, mm_lvl, size, original_width, original_height);
+ 
+ 		if (dds_error != DDS_ERROR_NONE) {
+ 			mprintf(("DDS ERROR: Couldn't open '%s' -- %s\n", filename, dds_error_string(dds_error)));
+@@ -1248,6 +1266,7 @@ static int bm_load_info(BM_TYPE type, const char *filename, CFILE *img_cfp, int
+ int bm_load(const char *real_filename, int dir_type) {
+ 	int free_slot = -1;
+ 	int w, h, bpp = 8;
++	int original_width = 0, original_height = 0;
+ 	int rc = 0;
+ 	size_t bm_size = 0;
+ 	int mm_lvl = 0;
+@@ -1315,7 +1334,8 @@ int bm_load(const char *real_filename, int dir_type) {
+ 		return -1;
+ 	}
+ 
+-	rc = bm_load_info(type, filename, img_cfp, &w, &h, &bpp, &c_type, &mm_lvl, &bm_size);
++	rc = bm_load_info(type, filename, img_cfp, &w, &h, &bpp, &c_type, &mm_lvl, &bm_size,
++		&original_width, &original_height);
+ 
+ 	if (rc != 0) {
+ 		if (img_cfp != nullptr)
+@@ -1340,6 +1360,8 @@ int bm_load(const char *real_filename, int dir_type) {
+ 	entry->type = type;
+ 	entry->comp_type = c_type;
+ 	entry->signature = Bm_next_signature++;
++	entry->original_width = original_width;
++	entry->original_height = original_height;
+ 	entry->bm.w = (short)w;
+ 	entry->bm.rowsize = (short)w;
+ 	entry->bm.h = (short)h;
+@@ -1794,7 +1816,8 @@ int bm_load_animation(const char *real_filename, int *nframes, int *fps, int *ke
+ 
+ 			// bm_load_info() returns non-0 on failure
+ 			if (bm_load_info(eff_type, entry->info.ani.eff.filename,
+-							 nullptr, &anim_width, &anim_height, &bpp, &c_type, &mm_lvl, &img_size)) {
++							 nullptr, &anim_width, &anim_height, &bpp, &c_type, &mm_lvl, &img_size,
++							 &entry->original_width, &entry->original_height)) {
+ 				// if we didn't get anything then bail out now
+ 				if (i == 0) {
+ 					Warning(LOCATION, "EFF: No frame images were found.  EFF, %s, is invalid.\n", filename);
+diff --git a/code/bmpman/bmpman.h b/code/bmpman/bmpman.h
+index 84eb19b64a1..cc20c01dbfd 100644
+--- a/code/bmpman/bmpman.h
++++ b/code/bmpman/bmpman.h
+@@ -404,6 +404,13 @@ int bm_is_valid(int handle);
+  */
+ int bm_get_info(int handle, int *w = nullptr, int * h = nullptr, uint* flags = nullptr, int *nframes = nullptr, int *fps = nullptr);
+ 
++/**
++ * @brief Gets the dimensions before DDS conversion drops mip levels.
++ * Falls back to the current dimensions for bitmaps without source-size metadata.
++ * @returns The same handle (or first animation frame) as bm_get_info(), or -1 on failure.
++ */
++int bm_get_original_size(int handle, int* w = nullptr, int* h = nullptr);
++
+ /**
+  * @brief Gets 3D info on the bitmap indexed by handle.
+  *
+diff --git a/code/ddsutils/ddsutils.cpp b/code/ddsutils/ddsutils.cpp
+index 77ac3ab9c47..b14019168f2 100644
+--- a/code/ddsutils/ddsutils.cpp
++++ b/code/ddsutils/ddsutils.cpp
+@@ -298,7 +298,8 @@ static int get_bit_count(const DDS_HEADER &dds_header)
+ 	return 0;
+ }
+ 
+-int dds_read_header(const char *filename, CFILE *img_cfp, int *width, int *height, int *bpp, int *compression_type, int *levels, size_t *size)
++int dds_read_header(const char *filename, CFILE *img_cfp, int *width, int *height, int *bpp, int *compression_type, int *levels, size_t *size,
++	int *original_width, int *original_height)
+ {
+ 	DDS_HEADER dds_header;
+ 	DDS_HEADER_DXT10 dds_header_dx10;
+@@ -337,6 +338,12 @@ int dds_read_header(const char *filename, CFILE *img_cfp, int *width, int *heigh
+ 		goto Done;
+ 	}
+ 
++	// Preserve the file dimensions before either conversion path drops mip levels.
++	if (original_width)
++		*original_width = dds_header.dwWidth;
++	if (original_height)
++		*original_height = dds_header.dwHeight;
++
+ 	// check for valid cubemap (we require all 6 faces)
+ 	if (dds_header.dwCaps2 & DDSCAPS2_CUBEMAP) {
+ 		if ( !(dds_header.dwCaps2 & DDSCAPS2_CUBEMAP_ALLFACES) ) {
+diff --git a/code/ddsutils/ddsutils.h b/code/ddsutils/ddsutils.h
+index 9d858feb2f3..c2c3237db07 100644
+--- a/code/ddsutils/ddsutils.h
++++ b/code/ddsutils/ddsutils.h
+@@ -300,9 +300,11 @@ inline size_t dds_compressed_mip_size(int w, int h, int block_size) {
+ #define DX10_OFFSET						DDS_OFFSET+sizeof(DDS_HEADER_DXT10)		// Unless a DX10 header is present
+ 
+ //reads a dds header
++//optional original dimensions are taken before conversion drops mip levels
+ //returns one of the error values
+ //'compression_type' comes back as one of the DDS_DXTC* defines
+-int dds_read_header(const char *filename, CFILE *img_cfp = NULL, int *width = 0, int *height = 0, int *bpp = 0, int *compression_type = 0, int *levels = 0, size_t *size = 0);
++int dds_read_header(const char *filename, CFILE *img_cfp = NULL, int *width = 0, int *height = 0, int *bpp = 0, int *compression_type = 0, int *levels = 0, size_t *size = 0,
++	int *original_width = nullptr, int *original_height = nullptr);
+ 
+ //reads bitmap
+ //size of the data it stored in size
+diff --git a/code/ship/ship.cpp b/code/ship/ship.cpp
+index f0efa918ca9..e8f53f61dc4 100644
+--- a/code/ship/ship.cpp
++++ b/code/ship/ship.cpp
+@@ -8547,7 +8547,7 @@ static void ship_add_cockpit_display(cockpit_display_info *display, int cockpit_
+ 	// create a render target for this cockpit texture
+ 	auto& glow_texture = (*Player_cockpit_textures)[glow_target];
+ 	if ( glow_texture == -1) {
+-		bm_get_info(diffuse_handle, &w, &h);
++		bm_get_original_size(diffuse_handle, &w, &h);
+ 		glow_texture = bm_make_render_target(w, h, BMP_FLAG_RENDER_TARGET_DYNAMIC | BMP_FLAG_RENDER_TARGET_DEPTH_ATTACHMENT);
+ 
+ 		// if no render target was made, bail
+@@ -8600,6 +8600,26 @@ static void ship_set_hud_cockpit_targets()
+ 	}
+ }
+ 
++// Draw in the source image's original pixel coordinates. Background/foreground
++// rectangles crop the image rather than stretching the whole image into the display.
++static void ship_render_cockpit_display_bitmap(int bitmap, int x, int y, int w = -1, int h = -1)
++{
++	int original_w = 0, original_h = 0;
++	if (bm_get_original_size(bitmap, &original_w, &original_h) < 0 || original_w <= 0 || original_h <= 0) {
++		return;
++	}
++
++	w = w < 0 ? original_w : std::min(w, original_w);
++	h = h < 0 ? original_h : std::min(h, original_h);
++	if (w <= 0 || h <= 0) {
++		return;
++	}
++
++	gr_set_bitmap(bitmap);
++	gr_bitmap_uv(x, y, w, h, 0.0f, 0.0f,
++		static_cast<float>(w) / original_w, static_cast<float>(h) / original_h, GR_RESIZE_NONE);
++}
++
+ int ship_start_render_cockpit_display(size_t cockpit_display_num)
+ {
+ 	// make sure this thing even has a cockpit
+@@ -8632,13 +8652,12 @@ int ship_start_render_cockpit_display(size_t cockpit_display_num)
+ 	gr_clear();
+ 	
+ 	if ( display->source >= 0 ) {
+-		gr_set_bitmap(display->source);
+-		gr_bitmap(0, 0, GR_RESIZE_NONE);
++		ship_render_cockpit_display_bitmap(display->source, 0, 0);
+ 	}
+ 
+ 	if ( display->background >= 0 ) {
+-		gr_set_bitmap(display->background);
+-		gr_bitmap_ex(display->offset[0], display->offset[1], display->size[0], display->size[1], 0, 0, GR_RESIZE_NONE);
++		ship_render_cockpit_display_bitmap(display->background, display->offset[0], display->offset[1],
++			display->size[0], display->size[1]);
+ 	}
+ 
+ 	gr_set_cull(cull);
+@@ -8667,8 +8686,8 @@ void ship_end_render_cockpit_display(size_t cockpit_display_num)
+ 	int cull = gr_set_cull(0);
+ 	if ( display->foreground >= 0 ) {
+ 		gr_reset_clip();
+-		gr_set_bitmap(display->foreground);
+-		gr_bitmap_ex(display->offset[0], display->offset[1], display->size[0], display->size[1], 0, 0, GR_RESIZE_NONE);
++		ship_render_cockpit_display_bitmap(display->foreground, display->offset[0], display->offset[1],
++			display->size[0], display->size[1]);
+ 	}
+ 
+ 	gr_set_cull(cull);
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index 663d4ef4d24..dc55b530795 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -1,10 +1,15 @@
++#include "bmpman/bmpman.h"
+ #include "cmdline/cmdline.h"
++#include "globalincs/systemvars.h"
+ #include "ddsutils/ddsutils.h"
+ #include "graphics/2d.h"
+ #include "util/FSTestFixture.h"
+ 
+ class DDSConversionResizeTest : public test::FSTestFixture {
+ protected:
++	explicit DDSConversionResizeTest(uint64_t init_flags = test::INIT_CFILE)
++		: test::FSTestFixture(init_flags) {}
++
+ 	std::function<bool(gr_capability)> saved_capability_query;
+ 	bool saved_no_cache = false;
+ 	const char* source_name = "unittest-dds-resize.dds";
+@@ -57,8 +62,11 @@ class DDSConversionResizeTest : public test::FSTestFixture {
+ 		write_header(fp.get(), width, height, input_mips);
+ 		cfseek(fp.get(), 0, CF_SEEK_SET);
+ 		int actual_width, actual_height, actual_mips, actual_format;
++		int original_width = 0, original_height = 0;
+ 		ASSERT_EQ(DDS_ERROR_NONE, dds_read_header(nullptr, fp.get(), &actual_width, &actual_height,
+-			nullptr, &actual_format, &actual_mips));
++			nullptr, &actual_format, &actual_mips, nullptr, &original_width, &original_height));
++		EXPECT_EQ(width, original_width);
++		EXPECT_EQ(height, original_height);
+ 		EXPECT_EQ(expected_width, actual_width);
+ 		EXPECT_EQ(expected_height, actual_height);
+ 		EXPECT_EQ(expected_mips, actual_mips);
+@@ -121,3 +129,72 @@ TEST_F(DDSConversionResizeTest, small_etc2_bitmap_matches_the_reported_header_si
+ 		EXPECT_EQ(0xcd, data[i]);
+ 	}
+ }
++
++
++class DDSBitmapOriginalSizeTest : public DDSConversionResizeTest {
++protected:
++	DDSBitmapOriginalSizeTest() : DDSConversionResizeTest(test::INIT_CFILE) {}
++	std::function<void(bitmap_slot*)> saved_bm_init;
++	std::function<void(bitmap_slot*, bool)> saved_bm_free_data;
++	std::function<bool(int, bitmap*)> saved_bm_data;
++	int saved_standalone = 0;
++
++	void SetUp() override
++	{
++		DDSConversionResizeTest::SetUp();
++		saved_standalone = Is_standalone;
++		Is_standalone = 0; // Load the fixture instead of the standalone placeholder bitmap.
++		saved_bm_init = gr_screen.gf_bm_init;
++		saved_bm_free_data = gr_screen.gf_bm_free_data;
++		saved_bm_data = gr_screen.gf_bm_data;
++		gr_screen.gf_bm_init = [](bitmap_slot*) {};
++		gr_screen.gf_bm_free_data = [](bitmap_slot*, bool) {};
++		gr_screen.gf_bm_data = [](int, bitmap*) { return true; };
++		bm_init();
++	}
++
++	void TearDown() override
++	{
++		bm_close();
++		gr_screen.gf_bm_init = saved_bm_init;
++		gr_screen.gf_bm_free_data = saved_bm_free_data;
++		gr_screen.gf_bm_data = saved_bm_data;
++		Is_standalone = saved_standalone;
++		DDSConversionResizeTest::TearDown();
++	}
++};
++
++TEST_F(DDSBitmapOriginalSizeTest, original_size_is_available_before_pixel_loading_and_survives_reload)
++{
++	std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE));
++	ASSERT_NE(nullptr, fp);
++	write_header(fp.get(), 1024, 1024, 3);
++	for (uint level = 0; level < 3; ++level) {
++		SCP_vector<ubyte> blocks(dds_compressed_mip_size(1024 >> level, 1024 >> level, 8), 0);
++		ASSERT_EQ(static_cast<int>(blocks.size()), cfwrite(blocks.data(), 1, static_cast<int>(blocks.size()), fp.get()));
++	}
++	fp.reset();
++
++	const int handle = bm_load(source_name, CF_TYPE_CACHE);
++	ASSERT_GE(handle, 0);
++	int width = 0, height = 0, original_width = 0, original_height = 0;
++	ASSERT_GE(bm_get_info(handle, &width, &height), 0);
++	ASSERT_GE(bm_get_original_size(handle, &original_width, &original_height), 0);
++	EXPECT_EQ(512, width);
++	EXPECT_EQ(512, height);
++	EXPECT_EQ(1024, original_width);
++	EXPECT_EQ(1024, original_height);
++
++	ASSERT_NE(nullptr, bm_lock(handle, 24, BMP_TEX_ETC2_RGB8));
++	bm_unlock(handle);
++	bm_unload(handle);
++	ASSERT_NE(nullptr, bm_lock(handle, 24, BMP_TEX_ETC2_RGB8));
++	bm_unlock(handle);
++	ASSERT_GE(bm_get_original_size(handle, &original_width, &original_height), 0);
++	EXPECT_EQ(1024, original_width);
++	EXPECT_EQ(1024, original_height);
++	ASSERT_GE(bm_get_info(handle, &width, &height), 0);
++	EXPECT_EQ(512, width);
++	EXPECT_EQ(512, height);
++	bm_release(handle);
++}
