@@ -1,7 +1,7 @@
 From d223dbfc69bc9b3732db1bf8fee4b01ad901a1d0 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 16 Sep 2026 19:47:26 -0300
-Subject: [PATCH 01/13] Implement BCn to ETC2 transcode
+Subject: [PATCH 01/16] Implement BCn to ETC2 transcode
 
 ---
  code/CMakeLists.txt                     |    2 +
@@ -19,6 +19,7 @@ Subject: [PATCH 01/13] Implement BCn to ETC2 transcode
  code/graphics/vulkan/VulkanRenderer.cpp |   33 +
  code/graphics/vulkan/VulkanRenderer.h   |   10 +
  code/graphics/vulkan/gr_vulkan.cpp      |    5 +-
+ code/localization/localize.cpp          |    3 +-
  code/source_groups.cmake                |    6 +
  code/texcache/tex_cache.cpp             |  260 ++
  code/texcache/tex_cache.h               |   24 +
@@ -541,10 +542,10 @@ index 437bc85368d..abd00046e31 100644
  	CAPABILITY_INSTANCED_RENDERING,
  	CAPABILITY_FAST_SHADOWS,
 diff --git a/code/graphics/opengl/es_compatibility.h b/code/graphics/opengl/es_compatibility.h
-index 5ccece337..0c66d41d6 100644
+index a864be1545e..072a3b6169b 100644
 --- a/code/graphics/opengl/es_compatibility.h
 +++ b/code/graphics/opengl/es_compatibility.h
-@@ -49,6 +49,7 @@
+@@ -48,6 +48,7 @@
  #define GLAD_GL_ARB_texture_storage				GL_TRUE // ES 3.2
  #define GLAD_GL_ARB_draw_buffers_blend			GL_TRUE // ES 3.2 (glBlendFunci and glBlendEquationi)
  #define GLAD_GL_ARB_vertex_attrib_binding		GL_TRUE // ES 3.1
@@ -653,6 +654,20 @@ index 36bedcb4a03..38c89de234d 100644
  	case gr_capability::CAPABILITY_LARGE_SHADER:
  		// Same troubleshooting switch as OpenGL: -no_large_shaders splits the model
  		// ubershader into per-flag-combination variants for drivers that choke on the
+diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
+index 78868daf554..da419ed4554 100644
+--- a/code/localization/localize.cpp
++++ b/code/localization/localize.cpp
+@@ -65,7 +65,8 @@ bool *Lcl_unexpected_tstring_check = nullptr;
+ // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
+ // but internal strings should still increment XSTR_SIZE to avoid collisions.
+ // retail XSTR_SIZE = 1570
+-// #define XSTR_SIZE	1942 // This is the next available ID
++// #define XSTR_SIZE	1938 // This is the next available ID
++
+ 
+ // struct to allow for strings.tbl-determined x offset
+ // offset is 0 for english, by default
 diff --git a/code/source_groups.cmake b/code/source_groups.cmake
 index 04734bca905..8bf25c927b6 100644
 --- a/code/source_groups.cmake
@@ -992,9 +1007,10 @@ diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
 index 32bae9c16b6..290a4ef394e 100644
 --- a/lib/CMakeLists.txt
 +++ b/lib/CMakeLists.txt
-@@ -53,6 +53,8 @@ ADD_SUBDIRECTORY(lz4)
+@@ -53,7 +53,9 @@ ADD_SUBDIRECTORY(lz4)
  
  ADD_SUBDIRECTORY(imgui)
+ ADD_SUBDIRECTORY(implot)
  
 +ADD_SUBDIRECTORY(etcpak)
 +
@@ -7411,14 +7427,28 @@ index 0986c04d66d..51e4fbba46d 100644
 From b2b35a0f3b7d0de4da530810a21d5605c39db2bb Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Mon, 12 Oct 2026 17:01:51 -0300
-Subject: [PATCH 02/13] improve text cache size option display and usability
+Subject: [PATCH 02/16] improve text cache size option display and usability
 
 ---
+ code/localization/localize.cpp |  2 +-
  code/texcache/tex_cache.cpp    | 54 +++++++++++++++++++++++++++-------
  code/texcache/tex_cache.h      |  3 ++
  freespace2/freespace.cpp       |  3 ++
- 3 files changed, 50 insertions(+), 10 deletions(-)
+ 4 files changed, 51 insertions(+), 11 deletions(-)
 
+diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
+index da419ed4554..d27e1c01bf4 100644
+--- a/code/localization/localize.cpp
++++ b/code/localization/localize.cpp
+@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
+ // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
+ // but internal strings should still increment XSTR_SIZE to avoid collisions.
+ // retail XSTR_SIZE = 1570
+-// #define XSTR_SIZE	1938 // This is the next available ID
++// #define XSTR_SIZE	1936 // This is the next available ID
+ 
+ 
+ // struct to allow for strings.tbl-determined x offset
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
 index 8a9c363f7d8..518481e21f9 100644
 --- a/code/texcache/tex_cache.cpp
@@ -7568,7 +7598,7 @@ index 6d974979d11..46665fd9109 100644
 From 8a36e4febe0f841d954550fb26312be434a88452 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 01:47:50 -0300
-Subject: [PATCH 03/13] requested changes
+Subject: [PATCH 03/16] requested changes
 
 ---
  code/ddsutils/ddsutils.cpp           |   2 +-
@@ -7879,7 +7909,7 @@ index 00000000000..6641f9df146
 From 6f092969e30ea74d6d762913d03e8a75513f0d4d Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 02:03:30 -0300
-Subject: [PATCH 04/13] Unify vulkan texture support probe
+Subject: [PATCH 04/16] Unify vulkan texture support probe
 
 ---
  code/graphics/vulkan/VulkanTexture.cpp | 47 ++++----------------------
@@ -7947,7 +7977,7 @@ index 73375a93109..6be11c6c87c 100644
 From 7c4b472a1832fbfec905e6166945f1a0ec52795a Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 02:06:50 -0300
-Subject: [PATCH 05/13] correct cache version tag
+Subject: [PATCH 05/16] correct cache version tag
 
 ---
  code/texcache/tex_cache.cpp | 2 +-
@@ -7970,7 +8000,7 @@ index a153951152f..5c9e3a4c601 100644
 From d61c97cbd156ad695422cfee091054b9eb099577 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 18:56:03 -0300
-Subject: [PATCH 06/13] fix clang-tidy issue
+Subject: [PATCH 06/16] fix clang-tidy issue
 
 ---
  code/texcache/tex_cache.cpp | 2 +-
@@ -7993,7 +8023,7 @@ index 5c9e3a4c601..834bc4c382c 100644
 From f12fe5ab42e41c3e9c889dccf80c3282b1d09832 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Thu, 5 Nov 2026 19:37:00 -0300
-Subject: [PATCH 07/13] set loc ids
+Subject: [PATCH 07/16] set loc ids
 
 ---
  code/localization/localize.cpp | 2 +-
@@ -8001,18 +8031,18 @@ Subject: [PATCH 07/13] set loc ids
  2 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index 978d9fcd8..7024776af 100644
+index 570db6662b6..de8b83ddedd 100644
 --- a/code/localization/localize.cpp
 +++ b/code/localization/localize.cpp
 @@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
  // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
  // but internal strings should still increment XSTR_SIZE to avoid collisions.
  // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1940 // This is the next available ID
+-// #define XSTR_SIZE	1936 // This is the next available ID
 +// #define XSTR_SIZE	1943 // This is the next available ID
  
+ 
  // struct to allow for strings.tbl-determined x offset
- // offset is 0 for english, by default
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
 index 834bc4c382c..21f96d4da00 100644
 --- a/code/texcache/tex_cache.cpp
@@ -8038,10 +8068,32 @@ index 834bc4c382c..21f96d4da00 100644
  		sprintf(out, "%.1f GB", value);
  		return out;
 
+From 6cc2c1ff50c09aa250bdd96ebfc35e848f19d1bc Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Thu, 5 Nov 2026 19:39:45 -0300
+Subject: [PATCH 08/16] delete newline
+
+---
+ code/localization/localize.cpp | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
+index de8b83ddedd..7024776af56 100644
+--- a/code/localization/localize.cpp
++++ b/code/localization/localize.cpp
+@@ -67,7 +67,6 @@ bool *Lcl_unexpected_tstring_check = nullptr;
+ // retail XSTR_SIZE = 1570
+ // #define XSTR_SIZE	1943 // This is the next available ID
+ 
+-
+ // struct to allow for strings.tbl-determined x offset
+ // offset is 0 for english, by default
+ typedef struct {
+
 From 679e80cc6e2a1655db5c7d3be9a72722cb7259da Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 19:12:37 -0300
-Subject: [PATCH 08/13] Cache hit modifies mtime and min textures sizes
+Subject: [PATCH 09/16] Cache hit modifies mtime and min textures sizes
  consideration in trancoding
 
 ---
@@ -8321,7 +8373,7 @@ index 6641f9df146..72781664a17 100644
 From fb1a8a2fb0f073269fd23e3dfeea2523cd37f64f Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 19:33:32 -0300
-Subject: [PATCH 09/13] remove test change
+Subject: [PATCH 10/16] remove test change
 
 ---
  code/graphics/opengl/gropengl.cpp | 4 ++--
@@ -8347,7 +8399,7 @@ index 1fce558fc81..5a880149e94 100644
 From 5671115b53513c339fd65fa13c3ae183ac04e2cb Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 20:56:15 -0300
-Subject: [PATCH 10/13] adjust test
+Subject: [PATCH 11/16] adjust test
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 5 +++--
@@ -8378,7 +8430,7 @@ index 45d97d83820..1d0a214ca97 100644
 From c6f7b66f03ca21649138ab9b1d90787feb1e0d9b Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 21:18:46 -0300
-Subject: [PATCH 11/13] Update test_ddsutils.cpp
+Subject: [PATCH 12/16] Update test_ddsutils.cpp
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 2 +-
@@ -8401,7 +8453,7 @@ index 1d0a214ca97..6f1c0a72a3b 100644
 From 2707a9a73a32e7484aad38f3042f720ab4fbfc7f Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 22:03:27 -0300
-Subject: [PATCH 12/13] Update test_ddsutils.cpp
+Subject: [PATCH 13/16] Update test_ddsutils.cpp
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 2 +-
@@ -8424,7 +8476,7 @@ index 6f1c0a72a3b..663d4ef4d24 100644
 From e872f0269c26b98181a13e16298167eb93e1fd77 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 10 Nov 2026 20:06:59 -0300
-Subject: [PATCH 13/13] Properly deal with cockpit gauges on resized textures
+Subject: [PATCH 14/16] Properly deal with cockpit gauges on resized textures
 
 ---
  code/bmpman/bm_internal.h           |  4 ++
@@ -8768,3 +8820,93 @@ index 663d4ef4d24..dc55b530795 100644
 +	EXPECT_EQ(512, height);
 +	bm_release(handle);
 +}
+
+From db900950cd95d9cce8f4d580a29794aeb90b731e Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 10 Nov 2026 20:36:59 -0300
+Subject: [PATCH 15/16] fix clang-tidy issues
+
+---
+ code/ddsutils/ddsutils.h | 3 ++-
+ code/ship/ship.cpp       | 6 +++---
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/code/ddsutils/ddsutils.h b/code/ddsutils/ddsutils.h
+index c2c3237db07..c7de6bfe9ab 100644
+--- a/code/ddsutils/ddsutils.h
++++ b/code/ddsutils/ddsutils.h
+@@ -303,7 +303,8 @@ inline size_t dds_compressed_mip_size(int w, int h, int block_size) {
+ //optional original dimensions are taken before conversion drops mip levels
+ //returns one of the error values
+ //'compression_type' comes back as one of the DDS_DXTC* defines
+-int dds_read_header(const char *filename, CFILE *img_cfp = NULL, int *width = 0, int *height = 0, int *bpp = 0, int *compression_type = 0, int *levels = 0, size_t *size = 0,
++int dds_read_header(const char *filename, CFILE *img_cfp = nullptr, int *width = nullptr, int *height = nullptr,
++	int *bpp = nullptr, int *compression_type = nullptr, int *levels = nullptr, size_t *size = nullptr,
+ 	int *original_width = nullptr, int *original_height = nullptr);
+ 
+ //reads bitmap
+diff --git a/code/ship/ship.cpp b/code/ship/ship.cpp
+index e8f53f61dc4..8a2f09ed4f3 100644
+--- a/code/ship/ship.cpp
++++ b/code/ship/ship.cpp
+@@ -8593,9 +8593,9 @@ static void ship_set_hud_cockpit_targets()
+ 
+ 	auto& hud = Ship_info[Player_ship->ship_info_index].hud_gauges;
+ 
+-	for ( int i = 0; i < (int)hud.size(); i++ ) {
+-		for ( int j = 0; j < (int)Player_displays.size(); j++ ) {
+-			hud[i]->setCockpitTarget(&Player_displays[j]);
++	for (const auto& gauge : hud) {
++		for (const auto& display : Player_displays) {
++			gauge->setCockpitTarget(&display);
+ 		}
+ 	}
+ }
+
+From 6ea30f60e12fc21972d0af24343e48274fbfdbbd Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Wed, 11 Nov 2026 20:03:55 -0300
+Subject: [PATCH 16/16] update localization ids
+
+---
+ code/localization/localize.cpp | 2 +-
+ code/texcache/tex_cache.cpp    | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
+index d7559d3dba5..dc0c5363bdf 100644
+--- a/code/localization/localize.cpp
++++ b/code/localization/localize.cpp
+@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
+ // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
+ // but internal strings should still increment XSTR_SIZE to avoid collisions.
+ // retail XSTR_SIZE = 1570
+-// #define XSTR_SIZE	1943 // This is the next available ID
++// #define XSTR_SIZE	1945 // This is the next available ID
+ 
+ // struct to allow for strings.tbl-determined x offset
+ // offset is 0 for english, by default
+diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
+index 2da4ff635a9..90bea4c3c91 100644
+--- a/code/texcache/tex_cache.cpp
++++ b/code/texcache/tex_cache.cpp
+@@ -222,8 +222,8 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
+ }
+ 
+ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+-	std::pair<const char*, int>{"Texture Transcode Cache", 1940},
+-	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1941})
++	std::pair<const char*, int>{"Texture Transcode Cache", 1942},
++	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1943})
+ 	.category(std::make_pair("Graphics", 1825))
+ 	.level(options::ExpertLevel::Advanced)
+ 	.range(TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE)
+@@ -232,7 +232,7 @@ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+ 		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
+ 			return SCP_string(XSTR("Disabled", 413));
+ 		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
+-			return SCP_string(XSTR("Unlimited", 1942));
++			return SCP_string(XSTR("Unlimited", 1944));
+ 		SCP_string out;
+ 		sprintf(out, "%.1f GB", value);
+ 		return out;
