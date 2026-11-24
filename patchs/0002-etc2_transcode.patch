@@ -1,7 +1,7 @@
 From d223dbfc69bc9b3732db1bf8fee4b01ad901a1d0 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Wed, 16 Sep 2026 19:47:26 -0300
-Subject: [PATCH 01/16] Implement BCn to ETC2 transcode
+Subject: [PATCH 01/24] Implement BCn to ETC2 transcode
 
 ---
  code/CMakeLists.txt                     |    2 +
@@ -19,7 +19,6 @@ Subject: [PATCH 01/16] Implement BCn to ETC2 transcode
  code/graphics/vulkan/VulkanRenderer.cpp |   33 +
  code/graphics/vulkan/VulkanRenderer.h   |   10 +
  code/graphics/vulkan/gr_vulkan.cpp      |    5 +-
- code/localization/localize.cpp          |    3 +-
  code/source_groups.cmake                |    6 +
  code/texcache/tex_cache.cpp             |  260 ++
  code/texcache/tex_cache.h               |   24 +
@@ -42,7 +41,7 @@ Subject: [PATCH 01/16] Implement BCn to ETC2 transcode
  lib/etcpak/etcpak/Vector.hpp            |  222 ++
  lib/opengl/gl/glad/include/glad/glad.h  |   11 +-
  lib/opengl/gl/glad/src/glad.c           |    9 +-
- 38 files changed, 6827 insertions(+), 21 deletions(-)
+ 37 files changed, 6825 insertions(+), 20 deletions(-)
  create mode 100644 code/texcache/tex_cache.cpp
  create mode 100644 code/texcache/tex_cache.h
  create mode 100644 lib/etcpak/CMakeLists.txt
@@ -542,7 +541,7 @@ index 437bc85368d..abd00046e31 100644
  	CAPABILITY_INSTANCED_RENDERING,
  	CAPABILITY_FAST_SHADOWS,
 diff --git a/code/graphics/opengl/es_compatibility.h b/code/graphics/opengl/es_compatibility.h
-index a864be1545e..072a3b6169b 100644
+index 5ccece33783..3f4cbaf4ab9 100644
 --- a/code/graphics/opengl/es_compatibility.h
 +++ b/code/graphics/opengl/es_compatibility.h
 @@ -48,6 +48,7 @@
@@ -654,20 +653,6 @@ index 36bedcb4a03..38c89de234d 100644
  	case gr_capability::CAPABILITY_LARGE_SHADER:
  		// Same troubleshooting switch as OpenGL: -no_large_shaders splits the model
  		// ubershader into per-flag-combination variants for drivers that choke on the
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index 78868daf554..da419ed4554 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -65,7 +65,8 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
- // but internal strings should still increment XSTR_SIZE to avoid collisions.
- // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1942 // This is the next available ID
-+// #define XSTR_SIZE	1938 // This is the next available ID
-+
- 
- // struct to allow for strings.tbl-determined x offset
- // offset is 0 for english, by default
 diff --git a/code/source_groups.cmake b/code/source_groups.cmake
 index 04734bca905..8bf25c927b6 100644
 --- a/code/source_groups.cmake
@@ -687,7 +672,7 @@ index 04734bca905..8bf25c927b6 100644
  	debris/debris.cpp
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
 new file mode 100644
-index 00000000000..8a9c363f7d8
+index 00000000000..4e7b1f35aef
 --- /dev/null
 +++ b/code/texcache/tex_cache.cpp
 @@ -0,0 +1,260 @@
@@ -882,8 +867,8 @@ index 00000000000..8a9c363f7d8
 +}
 +
 +auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
-+	std::pair<const char*, int>{"Texture Transcode Cache", 1936},
-+	std::pair<const char*, int>{"Texture transcode cache size in GBs. 0 for unlimited. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1937})
++	std::pair<const char*, int>{"Texture Transcode Cache", -1},
++	std::pair<const char*, int>{"Texture transcode cache size in GBs. 0 for unlimited. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1})
 +	.category(std::make_pair("Graphics", 1825))
 +	.level(options::ExpertLevel::Advanced)
 +	.range(0.0f, 20.0f)
@@ -1004,11 +989,10 @@ index a04e5097ba9..6d974979d11 100644
  	if (Is_standalone) {
  		// force off some cmdlines if they are on
 diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
-index 32bae9c16b6..290a4ef394e 100644
+index 7a10f0aded2..bd0f9628c68 100644
 --- a/lib/CMakeLists.txt
 +++ b/lib/CMakeLists.txt
-@@ -53,7 +53,9 @@ ADD_SUBDIRECTORY(lz4)
- 
+@@ -70,6 +70,8 @@ ADD_SUBDIRECTORY(lz4)
  ADD_SUBDIRECTORY(imgui)
  ADD_SUBDIRECTORY(implot)
  
@@ -7427,30 +7411,16 @@ index 0986c04d66d..51e4fbba46d 100644
 From b2b35a0f3b7d0de4da530810a21d5605c39db2bb Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Mon, 12 Oct 2026 17:01:51 -0300
-Subject: [PATCH 02/16] improve text cache size option display and usability
+Subject: [PATCH 02/24] improve text cache size option display and usability
 
 ---
- code/localization/localize.cpp |  2 +-
  code/texcache/tex_cache.cpp    | 54 +++++++++++++++++++++++++++-------
  code/texcache/tex_cache.h      |  3 ++
  freespace2/freespace.cpp       |  3 ++
- 4 files changed, 51 insertions(+), 11 deletions(-)
+ 3 files changed, 49 insertions(+), 9 deletions(-)
 
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index da419ed4554..d27e1c01bf4 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
- // but internal strings should still increment XSTR_SIZE to avoid collisions.
- // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1938 // This is the next available ID
-+// #define XSTR_SIZE	1936 // This is the next available ID
- 
- 
- // struct to allow for strings.tbl-determined x offset
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 8a9c363f7d8..518481e21f9 100644
+index 4e7b1f35aef..447836d65a3 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
 @@ -1,6 +1,7 @@
@@ -7498,10 +7468,9 @@ index 8a9c363f7d8..518481e21f9 100644
  }
  
  auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
--	std::pair<const char*, int>{"Texture Transcode Cache", 1936},
--	std::pair<const char*, int>{"Texture transcode cache size in GBs. 0 for unlimited. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1937})
-+	std::pair<const char*, int>{"Texture Transcode Cache", -1}, // TODO: Set localize id after approval
-+	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1}) // TODO: Set localize id after approval
+ 	std::pair<const char*, int>{"Texture Transcode Cache", -1},
+-	std::pair<const char*, int>{"Texture transcode cache size in GBs. 0 for unlimited. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1})
++	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1})
  	.category(std::make_pair("Graphics", 1825))
  	.level(options::ExpertLevel::Advanced)
 -	.range(0.0f, 20.0f)
@@ -7512,7 +7481,7 @@ index 8a9c363f7d8..518481e21f9 100644
 +		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
 +			return SCP_string(XSTR("Disabled", 413));
 +		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
-+			return SCP_string(XSTR("Unlimited", -1)); // TODO: Set localize id after approval
++			return SCP_string(XSTR("Unlimited", -1));
 +		SCP_string out;
 +		sprintf(out, "%.1f GB", value);
 +		return out;
@@ -7598,7 +7567,7 @@ index 6d974979d11..46665fd9109 100644
 From 8a36e4febe0f841d954550fb26312be434a88452 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 01:47:50 -0300
-Subject: [PATCH 03/16] requested changes
+Subject: [PATCH 03/24] requested changes
 
 ---
  code/ddsutils/ddsutils.cpp           |   2 +-
@@ -7639,7 +7608,7 @@ index 76e705b2aa1..6986fc5304e 100644
  	GR_CAPABILITY_ENTRY(INSTANCED_RENDERING),
  	GR_CAPABILITY_ENTRY(FAST_SHADOWS),
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 518481e21f9..a153951152f 100644
+index 447836d65a3..74aa17e6739 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
 @@ -8,8 +8,10 @@
@@ -7783,11 +7752,11 @@ index 63793686b05..47d5c2f69e0 100644
 \ No newline at end of file
 +target_link_libraries(etcpak PUBLIC compiler)
 diff --git a/test/src/source_groups.cmake b/test/src/source_groups.cmake
-index 1c268dda86e..f0f6f6622c6 100644
+index 9a92f548081..7fb7dacf41e 100644
 --- a/test/src/source_groups.cmake
 +++ b/test/src/source_groups.cmake
-@@ -17,6 +17,10 @@ add_file_folder("CFile"
-     cfile/cfile.cpp
+@@ -25,6 +25,10 @@ add_file_folder("Controlconfig"
+     controlconfig/test_bindings.cpp
  )
  
 +add_file_folder("Texture Cache"
@@ -7796,7 +7765,7 @@ index 1c268dda86e..f0f6f6622c6 100644
 +
  add_file_folder("Globalincs"
      globalincs/test_flagset.cpp
-     globalincs/test_safe_strings.cpp
+     globalincs/test_polymorphic.cpp
 diff --git a/test/src/texcache/test_tex_cache.cpp b/test/src/texcache/test_tex_cache.cpp
 new file mode 100644
 index 00000000000..6641f9df146
@@ -7909,7 +7878,7 @@ index 00000000000..6641f9df146
 From 6f092969e30ea74d6d762913d03e8a75513f0d4d Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 02:03:30 -0300
-Subject: [PATCH 04/16] Unify vulkan texture support probe
+Subject: [PATCH 04/24] Unify vulkan texture support probe
 
 ---
  code/graphics/vulkan/VulkanTexture.cpp | 47 ++++----------------------
@@ -7977,14 +7946,14 @@ index 73375a93109..6be11c6c87c 100644
 From 7c4b472a1832fbfec905e6166945f1a0ec52795a Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 02:06:50 -0300
-Subject: [PATCH 05/16] correct cache version tag
+Subject: [PATCH 05/24] correct cache version tag
 
 ---
  code/texcache/tex_cache.cpp | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index a153951152f..5c9e3a4c601 100644
+index 74aa17e6739..42a1ec186da 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
 @@ -11,7 +11,7 @@
@@ -8000,14 +7969,14 @@ index a153951152f..5c9e3a4c601 100644
 From d61c97cbd156ad695422cfee091054b9eb099577 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 3 Nov 2026 18:56:03 -0300
-Subject: [PATCH 06/16] fix clang-tidy issue
+Subject: [PATCH 06/24] fix clang-tidy issue
 
 ---
  code/texcache/tex_cache.cpp | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 5c9e3a4c601..834bc4c382c 100644
+index 42a1ec186da..5b65652f986 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
 @@ -43,7 +43,7 @@ SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_typ
@@ -8020,80 +7989,10 @@ index 5c9e3a4c601..834bc4c382c 100644
  
  	cfseek(dds, 0, CF_SEEK_SET);
 
-From f12fe5ab42e41c3e9c889dccf80c3282b1d09832 Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Thu, 5 Nov 2026 19:37:00 -0300
-Subject: [PATCH 07/16] set loc ids
-
----
- code/localization/localize.cpp | 2 +-
- code/texcache/tex_cache.cpp    | 6 +++---
- 2 files changed, 4 insertions(+), 4 deletions(-)
-
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index 570db6662b6..de8b83ddedd 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
- // but internal strings should still increment XSTR_SIZE to avoid collisions.
- // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1936 // This is the next available ID
-+// #define XSTR_SIZE	1943 // This is the next available ID
- 
- 
- // struct to allow for strings.tbl-determined x offset
-diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 834bc4c382c..21f96d4da00 100644
---- a/code/texcache/tex_cache.cpp
-+++ b/code/texcache/tex_cache.cpp
-@@ -213,8 +213,8 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
- }
- 
- auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
--	std::pair<const char*, int>{"Texture Transcode Cache", -1}, // TODO: Set localize id after approval
--	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", -1}) // TODO: Set localize id after approval
-+	std::pair<const char*, int>{"Texture Transcode Cache", 1940},
-+	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1941})
- 	.category(std::make_pair("Graphics", 1825))
- 	.level(options::ExpertLevel::Advanced)
- 	.range(TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE)
-@@ -223,7 +223,7 @@ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
- 		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
- 			return SCP_string(XSTR("Disabled", 413));
- 		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
--			return SCP_string(XSTR("Unlimited", -1)); // TODO: Set localize id after approval
-+			return SCP_string(XSTR("Unlimited", 1942));
- 		SCP_string out;
- 		sprintf(out, "%.1f GB", value);
- 		return out;
-
-From 6cc2c1ff50c09aa250bdd96ebfc35e848f19d1bc Mon Sep 17 00:00:00 2001
-From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Thu, 5 Nov 2026 19:39:45 -0300
-Subject: [PATCH 08/16] delete newline
-
----
- code/localization/localize.cpp | 1 -
- 1 file changed, 1 deletion(-)
-
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index de8b83ddedd..7024776af56 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -67,7 +67,6 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // retail XSTR_SIZE = 1570
- // #define XSTR_SIZE	1943 // This is the next available ID
- 
--
- // struct to allow for strings.tbl-determined x offset
- // offset is 0 for english, by default
- typedef struct {
-
 From 679e80cc6e2a1655db5c7d3be9a72722cb7259da Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 19:12:37 -0300
-Subject: [PATCH 09/16] Cache hit modifies mtime and min textures sizes
+Subject: [PATCH 07/24] Cache hit modifies mtime and min textures sizes
  consideration in trancoding
 
 ---
@@ -8154,7 +8053,7 @@ index 5a880149e94..1fce558fc81 100644
  		return GLAD_GL_ARB_ES3_compatibility != 0;
  	case gr_capability::CAPABILITY_LARGE_SHADER:
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 21f96d4da00..2da4ff635a9 100644
+index 5b65652f986..0ba3a340285 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
 @@ -8,6 +8,7 @@
@@ -8309,10 +8208,10 @@ index 00000000000..45d97d83820
 +	}
 +}
 diff --git a/test/src/source_groups.cmake b/test/src/source_groups.cmake
-index 94f950645de..eca02763f3e 100644
+index 7fb7dacf41e..4cc8e67e944 100644
 --- a/test/src/source_groups.cmake
 +++ b/test/src/source_groups.cmake
-@@ -21,6 +21,10 @@ add_file_folder("Texture Cache"
+@@ -29,6 +29,10 @@ add_file_folder("Texture Cache"
      texcache/test_tex_cache.cpp
  )
  
@@ -8322,7 +8221,7 @@ index 94f950645de..eca02763f3e 100644
 +
  add_file_folder("Globalincs"
      globalincs/test_flagset.cpp
-     globalincs/test_safe_strings.cpp
+     globalincs/test_polymorphic.cpp
 diff --git a/test/src/texcache/test_tex_cache.cpp b/test/src/texcache/test_tex_cache.cpp
 index 6641f9df146..72781664a17 100644
 --- a/test/src/texcache/test_tex_cache.cpp
@@ -8373,7 +8272,7 @@ index 6641f9df146..72781664a17 100644
 From fb1a8a2fb0f073269fd23e3dfeea2523cd37f64f Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 19:33:32 -0300
-Subject: [PATCH 10/16] remove test change
+Subject: [PATCH 08/24] remove test change
 
 ---
  code/graphics/opengl/gropengl.cpp | 4 ++--
@@ -8399,7 +8298,7 @@ index 1fce558fc81..5a880149e94 100644
 From 5671115b53513c339fd65fa13c3ae183ac04e2cb Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 20:56:15 -0300
-Subject: [PATCH 11/16] adjust test
+Subject: [PATCH 09/24] adjust test
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 5 +++--
@@ -8430,7 +8329,7 @@ index 45d97d83820..1d0a214ca97 100644
 From c6f7b66f03ca21649138ab9b1d90787feb1e0d9b Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 21:18:46 -0300
-Subject: [PATCH 12/16] Update test_ddsutils.cpp
+Subject: [PATCH 10/24] Update test_ddsutils.cpp
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 2 +-
@@ -8453,7 +8352,7 @@ index 1d0a214ca97..6f1c0a72a3b 100644
 From 2707a9a73a32e7484aad38f3042f720ab4fbfc7f Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Sat, 7 Nov 2026 22:03:27 -0300
-Subject: [PATCH 13/16] Update test_ddsutils.cpp
+Subject: [PATCH 11/24] Update test_ddsutils.cpp
 
 ---
  test/src/ddsutils/test_ddsutils.cpp | 2 +-
@@ -8476,7 +8375,7 @@ index 6f1c0a72a3b..663d4ef4d24 100644
 From e872f0269c26b98181a13e16298167eb93e1fd77 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 10 Nov 2026 20:06:59 -0300
-Subject: [PATCH 14/16] Properly deal with cockpit gauges on resized textures
+Subject: [PATCH 12/24] Properly deal with cockpit gauges on resized textures
 
 ---
  code/bmpman/bm_internal.h           |  4 ++
@@ -8824,7 +8723,7 @@ index 663d4ef4d24..dc55b530795 100644
 From db900950cd95d9cce8f4d580a29794aeb90b731e Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
 Date: Tue, 10 Nov 2026 20:36:59 -0300
-Subject: [PATCH 15/16] fix clang-tidy issues
+Subject: [PATCH 13/24] fix clang-tidy issues
 
 ---
  code/ddsutils/ddsutils.h | 3 ++-
@@ -8863,50 +8762,1663 @@ index e8f53f61dc4..8a2f09ed4f3 100644
  	}
  }
 
-From 6ea30f60e12fc21972d0af24343e48274fbfdbbd Mon Sep 17 00:00:00 2001
+From b43218e50cfdd6e8f02957fa8a1eb40537ae6432 Mon Sep 17 00:00:00 2001
 From: Salvador Cipolla <shivanuo@hotmail.com>
-Date: Wed, 11 Nov 2026 20:03:55 -0300
-Subject: [PATCH 16/16] update localization ids
+Date: Fri, 13 Nov 2026 03:12:05 -0300
+Subject: [PATCH 14/24] requested changes
 
 ---
- code/localization/localize.cpp | 2 +-
- code/texcache/tex_cache.cpp    | 6 +++---
- 2 files changed, 4 insertions(+), 4 deletions(-)
+ code/cfile/cfile.cpp       | 27 ---------------------------
+ code/cfile/cfile.h         |  3 +--
+ freespace2/freespace.cpp   |  2 +-
+ freespace2/levelpaging.cpp |  2 +-
+ 4 files changed, 3 insertions(+), 31 deletions(-)
 
-diff --git a/code/localization/localize.cpp b/code/localization/localize.cpp
-index d7559d3dba5..dc0c5363bdf 100644
---- a/code/localization/localize.cpp
-+++ b/code/localization/localize.cpp
-@@ -65,7 +65,7 @@ bool *Lcl_unexpected_tstring_check = nullptr;
- // NOTE: with map storage of XSTR strings, the indexes no longer need to be contiguous,
- // but internal strings should still increment XSTR_SIZE to avoid collisions.
- // retail XSTR_SIZE = 1570
--// #define XSTR_SIZE	1943 // This is the next available ID
-+// #define XSTR_SIZE	1945 // This is the next available ID
+diff --git a/code/cfile/cfile.cpp b/code/cfile/cfile.cpp
+index b0a068a6def..138466cf642 100644
+--- a/code/cfile/cfile.cpp
++++ b/code/cfile/cfile.cpp
+@@ -544,33 +544,6 @@ void cf_attrib(const char *filename, int set, int clear, int dir_type)
+ }
+ #endif
  
- // struct to allow for strings.tbl-determined x offset
- // offset is 0 for english, by default
+-int cf_rename(const char *old_name, const char *name, int dir_type)
+-{
+-	Assert( CF_TYPE_SPECIFIED(dir_type) );
+-
+-	int ret_code;
+-	SCP_string old_longname;
+-	SCP_string new_longname;
+-	
+-	cf_create_default_path_string(old_longname, dir_type, old_name);
+-	cf_create_default_path_string(new_longname, dir_type, name);
+-
+-	ret_code = rename(old_longname.c_str(), new_longname.c_str());
+-	if(ret_code != 0){
+-		switch(errno){
+-		case EACCES :
+-			return CF_RENAME_FAIL_ACCESS;
+-		case ENOENT :
+-		default:
+-			return CF_RENAME_FAIL_EXIST;
+-		}
+-	}
+-
+-	return CF_RENAME_SUCCESS;
+-	
+-
+-}
+-
+ int cf_rename(const char* old_name, const char* name, int dir_type, int location_flags)
+ {
+ 	Assert(CF_TYPE_SPECIFIED(dir_type));
+diff --git a/code/cfile/cfile.h b/code/cfile/cfile.h
+index 4782347f146..6e273f5762c 100644
+--- a/code/cfile/cfile.h
++++ b/code/cfile/cfile.h
+@@ -289,8 +289,7 @@ uint cf_add_chksum_long(uint seed, ubyte *buffer, size_t size);
+ #define CF_RENAME_SUCCESS				0					// successfully renamed the file
+ #define CF_RENAME_FAIL_ACCESS			1					// new name could not be created
+ #define CF_RENAME_FAIL_EXIST			2					// old name does not exist
+-int cf_rename(const char *old_name, const char *name, int type = CF_TYPE_ANY );
+-int cf_rename(const char *old_name, const char *name, int type, int location_flags);
++int cf_rename(const char *old_name, const char *name, int type = CF_TYPE_ANY, int location_flags = CF_LOCATION_ALL);
+ 
+ // Creates the directory path if it doesn't exist. Even creates all its
+ // parent paths.
+diff --git a/freespace2/freespace.cpp b/freespace2/freespace.cpp
+index 5c349302de0..da51b909e26 100644
+--- a/freespace2/freespace.cpp
++++ b/freespace2/freespace.cpp
+@@ -194,6 +194,7 @@
+ #include "starfield/supernova.h"
+ #include "stats/medals.h"
+ #include "stats/stats.h"
++#include "texcache/tex_cache.h"
+ #include "tracing/Monitor.h"
+ #include "tracing/tracing.h"
+ #include "utils/Random.h"
+@@ -204,7 +205,6 @@
+ #include "weapon/muzzleflash.h"
+ #include "weapon/shockwave.h"
+ #include "weapon/weapon.h"
+-#include "texcache/tex_cache.h"
+ 
+ #include <SDL3/SDL_main.h>
+ 
+diff --git a/freespace2/levelpaging.cpp b/freespace2/levelpaging.cpp
+index 8dabf2bca05..e6dcb4f2551 100644
+--- a/freespace2/levelpaging.cpp
++++ b/freespace2/levelpaging.cpp
+@@ -12,8 +12,8 @@
+ #include "freespace.h"
+ #include "levelpaging.h"
+ 
+-#include "tracing/tracing.h"
+ #include "texcache/tex_cache.h"
++#include "tracing/tracing.h"
+ 
+ 
+ // All the page in functions
+
+From b2e800378e9d6f9c82a7c32b18af9e6864c74710 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 22:25:13 -0300
+Subject: [PATCH 15/24] Fix streaming of compressed DDS frames in EFF
+ animations
+
+---
+ code/graphics/generic.cpp           | 82 +++++++++++++++++++++++------
+ test/src/ddsutils/test_ddsutils.cpp | 77 +++++++++++++++++++++++++++
+ 2 files changed, 144 insertions(+), 15 deletions(-)
+
+diff --git a/code/graphics/generic.cpp b/code/graphics/generic.cpp
+index aae13a8a0d0..0565d2d97bf 100644
+--- a/code/graphics/generic.cpp
++++ b/code/graphics/generic.cpp
+@@ -1,14 +1,10 @@
+ #include "anim/packunpack.h"
++#include "ddsutils/ddsutils.h"
+ #include "globalincs/globals.h"
+ #include "graphics/2d.h"
+ #include "graphics/generic.h"
+ #define BMPMAN_INTERNAL
+ #include "bmpman/bm_internal.h"
+-#ifdef _WIN32
+-#include <windows.h>	// for MAX_PATH
+-#else
+-#define MAX_PATH	255
+-#endif
+ //#define TIMER
+ #ifdef TIMER
+ #include "io/timer.h"
+@@ -154,6 +150,20 @@ int generic_anim_load(generic_anim *ga)
+ 	return 0;
+ }
+ 
++static void copy_dds_stream_pixels(const SCP_vector<ubyte>& bgra, ubyte* frame, bool use_hud_color)
++{
++	if (!use_hud_color) {
++		memcpy(frame, bgra.data(), bgra.size());
++		return;
++	}
++
++	// Use the same luminance and alpha as the OpenGL HUD texture update.
++	for (size_t src = 0; src < bgra.size(); src += 4) {
++		const auto luminance = (bgra[src] + bgra[src + 1] + bgra[src + 2]) / 3;
++		frame[src / 4] = static_cast<ubyte>(luminance * bgra[src + 3] / 255);
++	}
++}
++
+ int generic_anim_stream(generic_anim *ga, const bool cache)
+ {
+ 	CFILE *img_cfp = NULL;
+@@ -237,10 +247,10 @@ int generic_anim_stream(generic_anim *ga, const bool cache)
+ 		ga->bitmap_id = bm_create(ga->png.anim->bpp, ga->width, ga->height, ga->buffer, 0);
+ 	}
+ 	else {
+-		bpp = 32;
+-		if(ga->use_hud_color)
+-			bpp = 8;
+-		bm_load_and_parse_eff(ga->filename, CF_TYPE_ANY, &ga->num_frames, &anim_fps, &ga->keyframe, 0);
++		if (!bm_load_and_parse_eff(ga->filename, CF_TYPE_ANY, &ga->num_frames, &anim_fps, &ga->keyframe, nullptr)
++			|| ga->num_frames <= 0) {
++			return -1;
++		}
+ 		char *p = strrchr( ga->filename, '.' );
+ 		if ( p )
+ 			*p = 0;
+@@ -254,12 +264,34 @@ int generic_anim_stream(generic_anim *ga, const bool cache)
+ 			mprintf(("Cannot find first frame for eff streaming. eff Filename: %s\n", ga->filename));
+ 			return -1;
+ 		}
+-		if (snprintf(frame_name, MAX_FILENAME_LEN, "%s_0001", ga->filename) >= MAX_FILENAME_LEN) {
+-			// Make sure the string is null terminated
+-			frame_name[MAX_FILENAME_LEN - 1] = '\0';
++		ga->eff.next_frame = -1;
++		if (bm_get_type(ga->bitmap_id) == BM_TYPE_DDS) {
++			SCP_vector<ubyte> bgra;
++			const auto result = dds_decompress_top_mip_bgra(frame_name, CF_TYPE_ANY, &ga->width, &ga->height, bgra);
++			if (result == DDS_ERROR_NONE) {
++				// Streaming updates require an uncompressed destination, even when the GPU supports BCn.
++				bm_release(ga->bitmap_id);
++				bpp = ga->use_hud_color ? 8 : 32;
++				ga->buffer = static_cast<ubyte*>(vm_malloc(bgra.size() / (ga->use_hud_color ? 4 : 1)));
++				copy_dds_stream_pixels(bgra, ga->buffer, ga->use_hud_color);
++				ga->bitmap_id = bm_create(bpp, ga->width, ga->height, ga->buffer, ga->use_hud_color ? BMP_AABITMAP : 0);
++				if (ga->bitmap_id < 0) {
++					vm_free(ga->buffer);
++					ga->buffer = nullptr;
++					return -1;
++				}
++			} else if (result != DDS_ERROR_UNSUPPORTED || bm_is_compressed(ga->bitmap_id) || bm_is_cubemap(ga->bitmap_id)) {
++				mprintf(("Cannot decode first DDS frame for EFF streaming: %s\n", frame_name));
++				bm_release(ga->bitmap_id);
++				ga->bitmap_id = -1;
++				return -1;
++			}
++		}
++		if (!ga->buffer) {
++			snprintf(frame_name, MAX_FILENAME_LEN, "%s_0001", ga->filename);
++			ga->eff.next_frame = bm_load(frame_name);
++			bm_get_info(ga->bitmap_id, &ga->width, &ga->height);
+ 		}
+-		ga->eff.next_frame = bm_load(frame_name);
+-		bm_get_info(ga->bitmap_id, &ga->width, &ga->height);
+ 		ga->previous_frame = 0;
+ 	}
+ 
+@@ -331,6 +363,11 @@ void generic_anim_unload(generic_anim *ga)
+ 					bm_release(ga->eff.next_frame);
+ 				if(ga->bitmap_id >= 0)
+ 					bm_release(ga->bitmap_id);
++				if (ga->buffer) {
++					// Compressed DDS streams own the pixels backing their user bitmap.
++					vm_free(ga->buffer);
++					ga->buffer = nullptr;
++				}
+ 			}
+ 			if(ga->type == BM_TYPE_PNG) {
+ 				if(ga->bitmap_id >= 0)
+@@ -373,9 +410,24 @@ void generic_render_eff_stream(generic_anim *ga)
+ 			// Make sure the string is null terminated
+ 			frame_name[MAX_FILENAME_LEN - 1] = '\0';
+ 		}
+-		if(bm_reload(ga->eff.next_frame, frame_name) == ga->eff.next_frame)
++		if (ga->buffer) {
++			SCP_vector<ubyte> bgra;
++			int width, height;
++			if (dds_decompress_top_mip_bgra(frame_name, CF_TYPE_ANY, &width, &height, bgra) == DDS_ERROR_NONE
++				&& width == ga->width && height == ga->height) {
++				copy_dds_stream_pixels(bgra, ga->buffer, ga->use_hud_color);
++				gr_update_texture(ga->bitmap_id, bpp, ga->buffer, width, height);
++			}
++			return;
++		}
++		if (ga->eff.next_frame >= 0 && bm_reload(ga->eff.next_frame, frame_name) == ga->eff.next_frame)
+ 		{
++			// A stream that started with an uncompressed frame cannot upload compressed DDS blocks.
++			if (bm_get_type(ga->eff.next_frame) == BM_TYPE_DDS && bm_is_compressed(ga->eff.next_frame))
++				return;
+ 			bitmap* next_frame_bmp = bm_lock(ga->eff.next_frame, bpp, (bpp==8)?BMP_AABITMAP:BMP_TEX_NONCOMP, true);
++			if (!next_frame_bmp)
++				return;
+ 			if(next_frame_bmp->data)
+ 				gr_update_texture(ga->bitmap_id, bpp, (ubyte*)next_frame_bmp->data, ga->width, ga->height);
+ 			bm_unlock(ga->eff.next_frame);
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index dc55b530795..247a5dd08af 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -3,6 +3,7 @@
+ #include "globalincs/systemvars.h"
+ #include "ddsutils/ddsutils.h"
+ #include "graphics/2d.h"
++#include "graphics/generic.h"
+ #include "util/FSTestFixture.h"
+ 
+ class DDSConversionResizeTest : public test::FSTestFixture {
+@@ -198,3 +199,79 @@ TEST_F(DDSBitmapOriginalSizeTest, original_size_is_available_before_pixel_loadin
+ 	EXPECT_EQ(512, height);
+ 	bm_release(handle);
+ }
++
++using DDSEffStreamTest = DDSBitmapOriginalSizeTest;
++
++TEST_F(DDSEffStreamTest, streams_bc1_frames_as_color_or_hud_pixels)
++{
++	const char* eff_name = "unittest-dds-stream.eff";
++	const char* frame_names[] = {"unittest-dds-stream_0000.dds", "unittest-dds-stream_0001.dds"};
++	const auto cleanup_files = [&](const char*) {
++		cf_delete(eff_name, CF_TYPE_CACHE);
++		for (const auto* name : frame_names) {
++			cf_delete(name, CF_TYPE_CACHE);
++		}
++	};
++	std::unique_ptr<const char, decltype(cleanup_files)> files(eff_name, cleanup_files);
++	{
++		std::unique_ptr<CFILE> fp(cfopen(eff_name, "wb", CF_TYPE_CACHE));
++		ASSERT_NE(nullptr, fp);
++		const char eff[] = "$Type: DDS\n$Frames: 2\n$FPS: 2\n";
++		ASSERT_EQ(static_cast<int>(sizeof(eff) - 1), cfwrite(eff, 1, sizeof(eff) - 1, fp.get()));
++	}
++
++	// Solid red, then white, encoded as BC1 blocks. The ETC2 path would drop the top mip.
++	for (size_t i = 0; i < 2; ++i) {
++		std::unique_ptr<CFILE> fp(cfopen(frame_names[i], "wb", CF_TYPE_CACHE));
++		ASSERT_NE(nullptr, fp);
++		write_header(fp.get(), 512, 512, 2);
++		SCP_vector<uint> blocks((dds_compressed_mip_size(512, 512, 8) + dds_compressed_mip_size(256, 256, 8)) / sizeof(uint));
++		for (size_t block = 0; block < blocks.size(); block += 2) {
++			blocks[block] = INTEL_INT(i == 0 ? 0xf800u : 0xffffu);
++		}
++		ASSERT_EQ(static_cast<int>(blocks.size()), cfwrite(blocks.data(), sizeof(uint), static_cast<int>(blocks.size()), fp.get()));
++	}
++
++	for (const bool native_bc : {false, true}) {
++		gr_screen.gf_is_capable = [native_bc](gr_capability capability) {
++			return capability == (native_bc ? gr_capability::CAPABILITY_S3TC : gr_capability::CAPABILITY_ETC2);
++		};
++		for (const bool hud : {false, true}) {
++			SCOPED_TRACE(::testing::Message() << "native BC: " << native_bc << ", HUD: " << hud);
++			generic_anim anim{};
++			generic_anim_init(&anim, "unittest-dds-stream");
++			anim.use_hud_color = hud;
++			std::unique_ptr<generic_anim, decltype(&generic_anim_unload)> stream(&anim, generic_anim_unload);
++
++			const auto saved_create = gr_screen.gf_bm_create;
++			gr_screen.gf_bm_create = [](bitmap_slot*) {};
++			const auto result = generic_anim_stream(&anim);
++			gr_screen.gf_bm_create = saved_create;
++			ASSERT_EQ(0, result);
++			EXPECT_EQ(BM_TYPE_USER, bm_get_type(anim.bitmap_id));
++			ASSERT_NE(nullptr, anim.buffer);
++			EXPECT_EQ(512, anim.width);
++			EXPECT_EQ(512, anim.height);
++			EXPECT_EQ(hud ? 85 : 0, anim.buffer[0]);
++			if (!hud) {
++				EXPECT_EQ(255, anim.buffer[2]);
++				EXPECT_EQ(255, anim.buffer[3]);
++			}
++
++			bool updated = false;
++			const auto saved_update = gr_screen.gf_update_texture;
++			gr_screen.gf_update_texture = [&](int handle, int bpp, const ubyte* data, int width, int height) {
++				updated = true;
++				EXPECT_EQ(anim.bitmap_id, handle);
++				ASSERT_EQ(hud ? 8 : 32, bpp);
++				ASSERT_EQ(512, width);
++				ASSERT_EQ(512, height);
++				EXPECT_EQ(255, data[0]);
++				EXPECT_EQ(255, data[width * height * (bpp / 8) - 1]);
++			};
++			generic_anim_bitmap_set(&anim, 0.75f);
++			gr_screen.gf_update_texture = saved_update;
++			EXPECT_TRUE(updated);
++		}
++	}
++}
+
+From 0f5d911ae5672a3362aac9b798baeb64ab06e509 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 22:40:56 -0300
+Subject: [PATCH 16/24] Fix texture cache recovery and pruning
+
+---
+ code/ddsutils/ddsutils.cpp           |   6 +-
+ code/texcache/tex_cache.cpp          | 146 ++++++++++++++-------------
+ code/texcache/tex_cache.h            |   3 +
+ test/src/texcache/test_tex_cache.cpp |  39 ++++++-
+ 4 files changed, 119 insertions(+), 75 deletions(-)
+
+diff --git a/code/ddsutils/ddsutils.cpp b/code/ddsutils/ddsutils.cpp
+index b14019168f2..31f5939cc6a 100644
+--- a/code/ddsutils/ddsutils.cpp
++++ b/code/ddsutils/ddsutils.cpp
+@@ -536,10 +536,10 @@ int dds_read_bitmap(const char *filename, ubyte *data, ubyte *bpp, int cf_type)
+ 			etc2_size += (size_t)((w + 3) / 4) * ((h + 3) / 4) * out_block_bytes;
+ 		}
+ 
+-		extern bool Cmdline_no_transcode_cache;
++		const bool cache_enabled = tex_cache_is_enabled();
+ 		SCP_string key;
+ 
+-		if (!Cmdline_no_transcode_cache) {
++		if (cache_enabled) {
+ 			//Build the cache MD5 hash
+ 			key = tex_cache_make_key(cfp, real_name, TEX_CACHE_TYPE_ETC2, dds_header.ddspf.dwFourCC, cache_fmt, static_cast<uint>(etc2_size));
+ 
+@@ -629,7 +629,7 @@ int dds_read_bitmap(const char *filename, ubyte *data, ubyte *bpp, int cf_type)
+ 			out_offset += (size_t)blocks * out_block_bytes;
+ 		}
+ 
+-		if (!Cmdline_no_transcode_cache) {
++		if (cache_enabled) {
+ 			//Save to cache
+ 			tex_cache_store(key, dds_header.dwWidth, dds_header.dwHeight, out_mips, cache_fmt, data, etc2_size);
+ 		}
 diff --git a/code/texcache/tex_cache.cpp b/code/texcache/tex_cache.cpp
-index 2da4ff635a9..90bea4c3c91 100644
+index 0ba3a340285..fb8f5652781 100644
 --- a/code/texcache/tex_cache.cpp
 +++ b/code/texcache/tex_cache.cpp
-@@ -222,8 +222,8 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
+@@ -1,5 +1,6 @@
+ #include "texcache/tex_cache.h"
+ #include "cfile/cfile.h"
++#include "cfile/cfilesystem.h"
+ #include "options/Option.h"
+ #include "cmdline/cmdline.h"
+ 
+@@ -36,6 +37,11 @@ static SCP_string tex_cache_temp_filename(const SCP_string &key)
+ 	return SCP_string("tex-") + key + ".cache.tmp";
+ }
+ 
++bool tex_cache_is_enabled()
++{
++	return tex_cache_size > TEX_CACHE_OPTION_MIN_SIZE && !Cmdline_no_transcode_cache;
++}
++
+ SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size)
+ {
+ 	const char* name = source_name;
+@@ -74,7 +80,7 @@ SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_typ
+ 
+ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expected_height, uint expected_mips, int expected_format, size_t expected_size, ubyte *out_data)
+ {
+-	if (tex_cache_size <= TEX_CACHE_OPTION_MIN_SIZE || Cmdline_no_transcode_cache) //Cache disabled
++	if (!tex_cache_is_enabled())
+ 		return false;
+ 
+ 	const SCP_string name = tex_cache_filename(key);
+@@ -112,15 +118,14 @@ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expecte
+ 
+ 	if (!header_ok) {
+ 		cfclose(fp);
++		cf_delete(name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
+ 		return false;
+ 	}
+ 
+ 	SCP_vector<ubyte> stored(stored_size);
+ 	const int got = cfread(stored.data(), 1, (int)stored_size, fp);
+ 
+-	cfclose(fp);
+-
+-	if (got != (int)stored_size) {
++	if (cfclose(fp) != 0 || got != (int)stored_size) {
+ 		cf_delete(name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
+ 		return false;
+ 	}
+@@ -162,10 +167,10 @@ bool tex_cache_try_load(const SCP_string &key, uint expected_width, uint expecte
+ 
+ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips, int format, const ubyte *payload, size_t payload_size)
+ {
+-	if (tex_cache_size <= TEX_CACHE_OPTION_MIN_SIZE || Cmdline_no_transcode_cache) //Cache disabled
++	if (!tex_cache_is_enabled())
+ 		return;
+ 
+-	if (payload == nullptr || payload_size == 0) {
++	if (payload == nullptr || payload_size == 0 || payload_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+ 		return;
+ 	}
+ 
+@@ -198,27 +203,21 @@ void tex_cache_store(const SCP_string &key, uint width, uint height, uint mips,
+ 		return;
+ 	}
+ 
+-	cfwrite_uint(TEX_CACHE_MAGIC, fp);
+-	cfwrite_uint(TEX_CACHE_VERSION, fp);
+-	cfwrite_uint(flags, fp);
+-	cfwrite_uint((uint)format, fp);
+-	cfwrite_uint(width, fp);
+-	cfwrite_uint(height, fp);
+-	cfwrite_uint(mips, fp);
+-	cfwrite_uint((uint)payload_size, fp);
+-	cfwrite_uint((uint)out_size, fp);
+-	cfwrite_uint(payload_crc, fp);
+-
+-	const int written = cfwrite(out_buf, 1, (int)out_size, fp);
+-
+-	cfclose(fp);
+-
+-	if (written != (int)out_size) {
++	const uint header[] = {TEX_CACHE_MAGIC, TEX_CACHE_VERSION, flags, static_cast<uint>(format), width,
++		height, mips, static_cast<uint>(payload_size), static_cast<uint>(out_size), payload_crc};
++	bool write_ok = true;
++	for (const auto field : header) {
++		if (cfwrite_uint(field, fp) != 1) {
++			write_ok = false;
++			break;
++		}
++	}
++	write_ok = write_ok && cfwrite(out_buf, 1, static_cast<int>(out_size), fp) == static_cast<int>(out_size);
++	const int close_result = cfclose(fp);
++	if (!write_ok || close_result != 0 ||
++		cf_rename(temp_name.c_str(), final_name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS) != CF_RENAME_SUCCESS) {
+ 		cf_delete(temp_name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
+-		return;
+ 	}
+-
+-	cf_rename(temp_name.c_str(), final_name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
  }
  
  auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
--	std::pair<const char*, int>{"Texture Transcode Cache", 1940},
--	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1941})
-+	std::pair<const char*, int>{"Texture Transcode Cache", 1942},
-+	std::pair<const char*, int>{"Texture transcode cache size. Mostly relevant for mobile GPUs lacking S3TC / BC7 support.", 1943})
- 	.category(std::make_pair("Graphics", 1825))
- 	.level(options::ExpertLevel::Advanced)
- 	.range(TEX_CACHE_OPTION_MIN_SIZE, TEX_CACHE_OPTION_MAX_SIZE)
-@@ -232,7 +232,7 @@ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
- 		if (Cmdline_no_transcode_cache || value <= TEX_CACHE_OPTION_MIN_SIZE)
- 			return SCP_string(XSTR("Disabled", 413));
- 		if (value >= TEX_CACHE_OPTION_MAX_SIZE)
--			return SCP_string(XSTR("Unlimited", 1942));
-+			return SCP_string(XSTR("Unlimited", 1944));
- 		SCP_string out;
- 		sprintf(out, "%.1f GB", value);
- 		return out;
+@@ -248,62 +247,67 @@ auto CacheSizeLimit = options::OptionBuilder<float>("Graphics.TexCacheSize",
+ 
+ void tex_cache_prune()
+ {
+-	// Clear any incomplete .tmp file
+-	SCP_vector<SCP_string> temps;
+-
+-	cf_get_file_list(temps, CF_TYPE_CACHE, "tex-*.cache.tmp", CF_SORT_NONE, nullptr, CACHE_LOCATION_FLAGS);
+-
+-	for (const auto& temp : temps) {
+-		const SCP_string tname = temp + ".tmp";
+-		cf_delete(tname.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS);
+-	}
+-
+-	// unlimited cache
+-	if (tex_cache_size >= TEX_CACHE_OPTION_MAX_SIZE)
++	// List the same loose files that can be removed from the writable cache directory.
++	SCP_string cache_dir;
++	if (!cf_create_default_path_string(cache_dir, CF_TYPE_CACHE, nullptr, CACHE_LOCATION_FLAGS)) {
+ 		return;
++	}
+ 
+-	auto max_bytes = (size_t)(tex_cache_size * 1000000000);
+-
+-	// Check and clear cache
++	size_t removed_files = 0;
++	uint64_t removed_bytes = 0;
+ 	SCP_vector<SCP_string> names;
+ 	SCP_vector<file_list_info> info;
+ 
+-	cf_get_file_list(names, CF_TYPE_CACHE, "tex-*.cache", CF_SORT_NONE, &info, CACHE_LOCATION_FLAGS);
+-
+-	const size_t count = names.size();
+-
+-	if (count == 0) {
+-		return;
+-	}
+-
+-	size_t total = 0;
+-	for (size_t i = 0; i < count; ++i) {
+-		total += info[i].size;
+-	}
+-
+-	if (total <= max_bytes) {
+-		return;
++	const auto delete_entry = [&](const SCP_string& name, size_t size) {
++		if (!cf_delete(name.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS)) {
++			return false;
++		}
++		++removed_files;
++		removed_bytes += size;
++		return true;
++	};
++
++	const SCP_string temp_pattern = cache_dir + "tex-*.cache.tmp";
++	cf_get_file_list(names, CF_TYPE_CACHE, temp_pattern.c_str(), CF_SORT_NONE, &info);
++	for (size_t i = 0; i < names.size(); ++i) {
++		delete_entry(names[i] + ".tmp", info[i].size);
+ 	}
+ 
+-	// Free a minimum of 20%, not the entire cache. If the cache is disabled clear it completely
+-	const size_t target = max_bytes > 0 ? (max_bytes / 5) * 4 : 0;
++	if (tex_cache_size < TEX_CACHE_OPTION_MAX_SIZE) {
++		const auto max_bytes = static_cast<uint64_t>(std::max(0.0f, tex_cache_size) * 1'000'000'000.0);
++		names.clear();
++		info.clear();
++		const SCP_string cache_pattern = cache_dir + "tex-*.cache";
++		cf_get_file_list(names, CF_TYPE_CACHE, cache_pattern.c_str(), CF_SORT_NONE, &info);
+ 
+-	SCP_vector<size_t> order(count);
+-	for (size_t i = 0; i < count; ++i) {
+-		order[i] = i;
++		uint64_t total = 0;
++		for (const auto& entry : info) {
++			total += entry.size;
++		}
++		const bool clear_cache = max_bytes == 0;
++		if (clear_cache || total > max_bytes) {
++			// Trim to 80% of the cap, or clear all entries when the cap is zero.
++			const uint64_t target = (max_bytes / 5) * 4;
++			SCP_vector<size_t> order(names.size());
++			for (size_t i = 0; i < order.size(); ++i) {
++				order[i] = i;
++			}
++			std::sort(order.begin(), order.end(), [&info](size_t a, size_t b) {
++				return info[a].write_time < info[b].write_time;
++			});
++			for (const auto idx : order) {
++				if (!clear_cache && total <= target) {
++					break;
++				}
++				if (delete_entry(names[idx] + ".cache", info[idx].size)) {
++					total -= info[idx].size;
++				}
++			}
++		}
+ 	}
+ 
+-	std::sort(order.begin(), order.end(), [&info](size_t a, size_t b) {
+-		return info[a].write_time < info[b].write_time;
+-	});
+-
+-	for (size_t k = 0; (k < count) && (total > target); ++k) {
+-		const size_t idx = order[k];
+-		const SCP_string fname = names[idx] + ".cache";
+-
+-		if (cf_delete(fname.c_str(), CF_TYPE_CACHE, CACHE_LOCATION_FLAGS)) {
+-			total -= info[idx].size;
+-		}
++	if (removed_files > 0) {
++		mprintf(("Texture cache: pruned " SIZE_T_ARG " files (" UINT64_T_ARG " bytes)\n", removed_files, removed_bytes));
+ 	}
+ }
+ 
+diff --git a/code/texcache/tex_cache.h b/code/texcache/tex_cache.h
+index 8168944a612..ff3821a68a9 100644
+--- a/code/texcache/tex_cache.h
++++ b/code/texcache/tex_cache.h
+@@ -15,6 +15,9 @@ void tex_cache_prune();
+ // Disable the transcode cache option from the configuration menu
+ void tex_cache_disable_option();
+ 
++// Whether transcoded textures can be read from or written to the cache.
++bool tex_cache_is_enabled();
++
+ // Get the MD5 key hash for the dds texture
+ SCP_string tex_cache_make_key(CFILE *dds, const char *source_name, tex_cache_type cache_type, uint src_fourcc, int dst_format, uint tex_size);
+ 
+diff --git a/test/src/texcache/test_tex_cache.cpp b/test/src/texcache/test_tex_cache.cpp
+index 72781664a17..1398b8ac6e8 100644
+--- a/test/src/texcache/test_tex_cache.cpp
++++ b/test/src/texcache/test_tex_cache.cpp
+@@ -1,6 +1,8 @@
++#include "cfile/cfilesystem.h"
+ #include "texcache/tex_cache.h"
+ #include "util/FSTestFixture.h"
+ 
++#include <algorithm>
+ #include <chrono>
+ #include <filesystem>
+ #include <limits>
+@@ -22,6 +24,7 @@ class TextureCacheTest : public test::FSTestFixture {
+ 	void TearDown() override
+ 	{
+ 		cf_delete("tex-unittest-texture-cache.cache", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++		cf_delete("tex-unittest-texture-cache.cache.tmp", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
+ 		cf_delete("tex-unittest-texture-cache-cold.cache", CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
+ 		cf_delete(source_name, CF_TYPE_CACHE, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
+ 		tex_cache_size = saved_cache_size;
+@@ -61,10 +64,22 @@ TEST_F(TextureCacheTest, portable_round_trip_and_prune)
+ 	ASSERT_TRUE(tex_cache_try_load(key, 32, 32, 1, 0, loaded.size(), loaded.data()));
+ 	EXPECT_EQ(payload, loaded);
+ 
++	const char* temp_name = "tex-unittest-texture-cache.cache.tmp";
++	auto* pending = cfopen(temp_name, "wb", CF_TYPE_CACHE, false, CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT);
++	ASSERT_NE(nullptr, pending);
++	ASSERT_EQ(0, cfclose(pending));
++
+ 	tex_cache_size = 0.0f;
++	EXPECT_FALSE(tex_cache_is_enabled());
++	EXPECT_FALSE(tex_cache_try_load(key, 32, 32, 1, 0, loaded.size(), loaded.data()));
++	tex_cache_store("unittest-texture-cache-cold", 32, 32, 1, 0, payload.data(), payload.size());
++	EXPECT_FALSE(cf_find_file_location("tex-unittest-texture-cache-cold.cache", CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT).found);
+ 	tex_cache_prune();
+ 	EXPECT_FALSE(cf_find_file_location("tex-unittest-texture-cache.cache", CF_TYPE_CACHE,
+ 		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT).found);
++	EXPECT_FALSE(cf_find_file_location(temp_name, CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT).found);
+ }
+ 
+ TEST_F(TextureCacheTest, repaint_after_checksum_window_changes_key)
+@@ -87,7 +102,7 @@ TEST_F(TextureCacheTest, repaint_after_checksum_window_changes_key)
+ 	EXPECT_NE(original_key, source_key());
+ }
+ 
+-TEST_F(TextureCacheTest, oversized_stored_payload_is_rejected)
++TEST_F(TextureCacheTest, oversized_stored_payload_is_rejected_and_rebuilt)
+ {
+ 	std::unique_ptr<CFILE> fp(cfopen("tex-unittest-texture-cache.cache", "wb", CF_TYPE_CACHE, false,
+ 		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT));
+@@ -100,6 +115,28 @@ TEST_F(TextureCacheTest, oversized_stored_payload_is_rejected)
+ 
+ 	ubyte loaded[16] = {};
+ 	EXPECT_FALSE(tex_cache_try_load(key, 4, 4, 1, 0, sizeof(loaded), loaded));
++	EXPECT_FALSE(cf_find_file_location("tex-unittest-texture-cache.cache", CF_TYPE_CACHE,
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT).found);
++
++	const SCP_vector<ubyte> payload(sizeof(loaded), 42);
++	tex_cache_store(key, 4, 4, 1, 0, payload.data(), payload.size());
++	ASSERT_TRUE(tex_cache_try_load(key, 4, 4, 1, 0, sizeof(loaded), loaded));
++	EXPECT_TRUE(std::equal(payload.begin(), payload.end(), loaded));
++}
++
++TEST_F(TextureCacheTest, failed_rename_cleans_up_temporary_file)
++{
++	SCP_string final_path;
++	ASSERT_TRUE(cf_create_default_path_string(final_path, CF_TYPE_CACHE, "tex-unittest-texture-cache.cache",
++		CF_LOCATION_ROOT_GAME | CF_LOCATION_TYPE_ROOT));
++	const std::filesystem::path destination(final_path.c_str());
++	ASSERT_TRUE(std::filesystem::create_directories(destination));
++
++	const SCP_vector<ubyte> payload(16, 42);
++	tex_cache_store(key, 4, 4, 1, 0, payload.data(), payload.size());
++	EXPECT_FALSE(std::filesystem::exists(destination.string() + ".tmp"));
++	EXPECT_TRUE(std::filesystem::is_directory(destination));
++	EXPECT_TRUE(std::filesystem::remove(destination));
+ }
+ 
+ TEST_F(TextureCacheTest, cache_hit_refreshes_mtime_and_survives_pruning)
+
+From 0a60253ac6ec8f2a46457c92a89819834d8322e9 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 22:59:06 -0300
+Subject: [PATCH 17/24] Fix ddsutils test
+
+---
+ test/src/ddsutils/test_ddsutils.cpp | 71 +++++++++++++++++++++++++++--
+ 1 file changed, 68 insertions(+), 3 deletions(-)
+
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index 247a5dd08af..a914f3ffd9b 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -4,8 +4,12 @@
+ #include "ddsutils/ddsutils.h"
+ #include "graphics/2d.h"
+ #include "graphics/generic.h"
++#include "ktxutils/etcdec.h"
+ #include "util/FSTestFixture.h"
+ 
++#include <algorithm>
++#include <array>
++
+ class DDSConversionResizeTest : public test::FSTestFixture {
+ protected:
+ 	explicit DDSConversionResizeTest(uint64_t init_flags = test::INIT_CFILE)
+@@ -34,9 +38,9 @@ class DDSConversionResizeTest : public test::FSTestFixture {
+ 		test::FSTestFixture::TearDown();
+ 	}
+ 
+-	static void write_header(CFILE* fp, uint width, uint height, uint mips)
++	static void write_header(CFILE* fp, uint width, uint height, uint mips, uint fourcc = FOURCC_DXT1)
+ 	{
+-		// A standard 124-byte DDS header with a DXT1 pixel format.
++		// A standard 124-byte DDS header with a FourCC pixel format.
+ 		uint header[31] = {};
+ 		header[0] = 124;
+ 		header[1] = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT | DDSD_MIPMAPCOUNT;
+@@ -46,7 +50,7 @@ class DDSConversionResizeTest : public test::FSTestFixture {
+ 		header[6] = mips;
+ 		header[18] = 32;
+ 		header[19] = DDPF_FOURCC;
+-		header[20] = FOURCC_DXT1;
++		header[20] = fourcc;
+ 		header[26] = DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP;
+ 		cfwrite_uint(DDS_FILECODE, fp);
+ 		for (auto field : header) {
+@@ -131,6 +135,67 @@ TEST_F(DDSConversionResizeTest, small_etc2_bitmap_matches_the_reported_header_si
+ 	}
+ }
+ 
++TEST_F(DDSConversionResizeTest, resized_dxt5_skips_top_mip_and_writes_rgba8_blocks)
++{
++	constexpr size_t block_size = 16;
++	constexpr std::array<ubyte, 3> colors = {0, 255, 0};
++	constexpr std::array<ubyte, 3> alphas = {255, 192, 64};
++	constexpr std::array<size_t, 3> block_counts = {128 * 128, 64 * 64, 32 * 32};
++
++	{
++		std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE));
++		ASSERT_NE(nullptr, fp);
++		write_header(fp.get(), 512, 512, 3, FOURCC_DXT5);
++		for (size_t mip = 0; mip < block_counts.size(); ++mip) {
++			// BC3 uses an alpha block followed by an RGB565 color block. All selectors are zero.
++			const std::array<ubyte, block_size> block = {
++				alphas[mip], alphas[mip], 0, 0, 0, 0, 0, 0, colors[mip], colors[mip], 0, 0, 0, 0, 0, 0
++			};
++			const SCP_vector<std::array<ubyte, block_size>> blocks(block_counts[mip], block);
++			const auto bytes = static_cast<int>(blocks.size() * block_size);
++			ASSERT_EQ(bytes, cfwrite(blocks.data(), 1, bytes, fp.get()));
++		}
++	}
++
++	constexpr size_t first_mip_size = block_counts[1] * block_size;
++	constexpr size_t expected_size = first_mip_size + block_counts[2] * block_size;
++	{
++		std::unique_ptr<CFILE> fp(cfopen(source_name, "rb", CF_TYPE_CACHE));
++		ASSERT_NE(nullptr, fp);
++		int width, height, format, levels;
++		size_t size = 0;
++		ASSERT_EQ(DDS_ERROR_NONE, dds_read_header(nullptr, fp.get(), &width, &height, nullptr, &format, &levels, &size));
++		EXPECT_EQ(256, width);
++		EXPECT_EQ(256, height);
++		EXPECT_EQ(DDS_ETC2_RGBA8, format);
++		EXPECT_EQ(2, levels);
++		ASSERT_EQ(expected_size, size);
++	}
++
++	// Leave room for the original top mip so an unexpected extra write trips the sentinel.
++	static constexpr ubyte sentinel = 0xcd;
++	SCP_vector<ubyte> data(expected_size + block_counts[0] * block_size, sentinel);
++	ubyte bpp = 0;
++	ASSERT_EQ(DDS_ERROR_NONE, dds_read_bitmap(source_name, data.data(), &bpp, CF_TYPE_CACHE));
++	EXPECT_EQ(32, bpp);
++	EXPECT_TRUE(std::all_of(data.begin() + expected_size, data.end(), [](ubyte value) { return value == sentinel; }));
++
++	const auto check_block = [&data](size_t offset, ubyte color, ubyte alpha) {
++		SCOPED_TRACE(::testing::Message() << "ETC2 block at byte " << offset);
++		alignas(uint) std::array<ubyte, 4 * 4 * 4> rgba{};
++		etcdec_eac_rgba(data.data() + offset, rgba.data(), 4 * 4);
++		for (size_t channel = 0; channel < 3; ++channel) {
++			EXPECT_NEAR(color, rgba[channel], 8);
++		}
++		EXPECT_NEAR(alpha, rgba[3], 8);
++	};
++	// Check both ends of each retained mip to verify the source offset and the output block stride.
++	check_block(0, colors[1], alphas[1]);
++	check_block(first_mip_size - block_size, colors[1], alphas[1]);
++	check_block(first_mip_size, colors[2], alphas[2]);
++	check_block(expected_size - block_size, colors[2], alphas[2]);
++}
++
+ 
+ class DDSBitmapOriginalSizeTest : public DDSConversionResizeTest {
+ protected:
+
+From 323e69f24ad7ba8f22d71f2baea773de5a621d2e Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 23:16:21 -0300
+Subject: [PATCH 18/24] Unify location_flags type, set file_list_info.size;
+ tinfo.size
+
+---
+ code/cfile/cfile.cpp                                 |  2 +-
+ code/cfile/cfile.h                                   |  2 +-
+ code/cfile/cfilesystem.cpp                           |  1 +
+ test/src/cfile/cfile.cpp                             | 12 +++++++++++-
+ .../list_files_in_vps_and_dirs/data/tables/dir.tbl   |  2 +-
+ .../list_files_in_vps_and_dirs/data/tables/dir2.tbl  |  2 +-
+ 6 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/code/cfile/cfile.cpp b/code/cfile/cfile.cpp
+index 138466cf642..e3d3653d5d3 100644
+--- a/code/cfile/cfile.cpp
++++ b/code/cfile/cfile.cpp
+@@ -544,7 +544,7 @@ void cf_attrib(const char *filename, int set, int clear, int dir_type)
+ }
+ #endif
+ 
+-int cf_rename(const char* old_name, const char* name, int dir_type, int location_flags)
++int cf_rename(const char* old_name, const char* name, int dir_type, uint32_t location_flags)
+ {
+ 	Assert(CF_TYPE_SPECIFIED(dir_type));
+ 
+diff --git a/code/cfile/cfile.h b/code/cfile/cfile.h
+index 6e273f5762c..67c1eeae0a3 100644
+--- a/code/cfile/cfile.h
++++ b/code/cfile/cfile.h
+@@ -289,7 +289,7 @@ uint cf_add_chksum_long(uint seed, ubyte *buffer, size_t size);
+ #define CF_RENAME_SUCCESS				0					// successfully renamed the file
+ #define CF_RENAME_FAIL_ACCESS			1					// new name could not be created
+ #define CF_RENAME_FAIL_EXIST			2					// old name does not exist
+-int cf_rename(const char *old_name, const char *name, int type = CF_TYPE_ANY, int location_flags = CF_LOCATION_ALL);
++int cf_rename(const char *old_name, const char *name, int type = CF_TYPE_ANY, uint32_t location_flags = CF_LOCATION_ALL);
+ 
+ // Creates the directory path if it doesn't exist. Even creates all its
+ // parent paths.
+diff --git a/code/cfile/cfilesystem.cpp b/code/cfile/cfilesystem.cpp
+index 0ba89b26bdb..a98d57388ce 100644
+--- a/code/cfile/cfilesystem.cpp
++++ b/code/cfile/cfilesystem.cpp
+@@ -1946,6 +1946,7 @@ int cf_get_file_list(SCP_vector<SCP_string>& list, int pathtype, const char* _fi
+ 
+ 				if (info) {
+ 					tinfo.write_time = f->write_time;
++					tinfo.size = f->size;
+ 					info->push_back( tinfo );
+ 				}
+ 			}
+diff --git a/test/src/cfile/cfile.cpp b/test/src/cfile/cfile.cpp
+index 597a4a1ef5e..d09584f5a40 100644
+--- a/test/src/cfile/cfile.cpp
++++ b/test/src/cfile/cfile.cpp
+@@ -68,13 +68,15 @@ class CFileTest : public test::FSTestFixture {
+ 
+ TEST_F(CFileTest, list_files_in_vps_and_dirs) {
+ 	SCP_vector<SCP_string> table_files;
++	SCP_vector<file_list_info> info;
+ 	extern bool Skip_memory_files;
+ 
+ 	// For this test we need to skip the memory files to keep the results consistent
+ 	Skip_memory_files = true;
+-	ASSERT_EQ(4, cf_get_file_list(table_files, CF_TYPE_TABLES, "*", CF_SORT_NAME));
++	ASSERT_EQ(4, cf_get_file_list(table_files, CF_TYPE_TABLES, "*", CF_SORT_NAME, &info));
+ 
+ 	ASSERT_EQ((size_t)4, table_files.size());
++	ASSERT_EQ(table_files.size(), info.size());
+ 
+ 	ASSERT_STREQ("dir", table_files[0].c_str());
+ 	ASSERT_STREQ("dir2", table_files[1].c_str());
+@@ -82,6 +84,14 @@ TEST_F(CFileTest, list_files_in_vps_and_dirs) {
+ 	ASSERT_STREQ("test", table_files[2].c_str());
+ 	ASSERT_STREQ("test2", table_files[3].c_str());
+ 
++	for (size_t i = 0; i < table_files.size(); ++i) {
++		const auto filename = table_files[i] + ".tbl";
++		SCOPED_TRACE(filename.c_str());
++		const auto location = cf_find_file_location(filename.c_str(), CF_TYPE_TABLES);
++		ASSERT_TRUE(location.found);
++		EXPECT_EQ(location.size, info[i].size);
++	}
++
+ 	table_files.clear();
+ 	extern int Skip_packfile_search;
+ 	Skip_packfile_search = 1;
+diff --git a/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir.tbl b/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir.tbl
+index 8bd6648ed13..a1c15378377 100644
+--- a/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir.tbl
++++ b/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir.tbl
+@@ -1 +1 @@
+-asdf
++loose file
+diff --git a/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir2.tbl b/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir2.tbl
+index 8bd6648ed13..b2ad144a317 100644
+--- a/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir2.tbl
++++ b/test/test_data/cfile/list_files_in_vps_and_dirs/data/tables/dir2.tbl
+@@ -1 +1 @@
+-asdf
++second loose file
+
+From 50bf6a39aa84472e1c1815bdbca6fa7fbbdf556a Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 23:19:08 -0300
+Subject: [PATCH 19/24] bm_reload() now set the original width and height
+
+---
+ code/bmpman/bmpman.cpp              |  6 ++++-
+ test/src/ddsutils/test_ddsutils.cpp | 39 +++++++++++++++++++++++++++++
+ 2 files changed, 44 insertions(+), 1 deletion(-)
+
+diff --git a/code/bmpman/bmpman.cpp b/code/bmpman/bmpman.cpp
+index 09f56649da8..5ab6fed96e1 100644
+--- a/code/bmpman/bmpman.cpp
++++ b/code/bmpman/bmpman.cpp
+@@ -3144,9 +3144,11 @@ int bm_reload(int bitmap_handle, const char* filename) {
+ 	}
+ 
+ 	int w = 0, h = 0, bpp = 0, mm_lvl = 0;
++	int original_width = 0, original_height = 0;
+ 	BM_TYPE c_type = BM_TYPE_NONE;
+ 	size_t size = 0;
+-	const int rc = bm_load_info(entry->type, full_name, img_cfp, &w, &h, &bpp, &c_type, &mm_lvl, &size);
++	const int rc = bm_load_info(entry->type, full_name, img_cfp, &w, &h, &bpp, &c_type, &mm_lvl, &size,
++		&original_width, &original_height);
+ 	cfclose(img_cfp);
+ 	if (rc != 0) {
+ 		return -1;
+@@ -3164,6 +3166,8 @@ int bm_reload(int bitmap_handle, const char* filename) {
+ 		bm_free_data(bm_get_slot(bitmap_handle));
+ 		strcpy_s(entry->filename, filename);
+ 	}
++	entry->original_width = original_width;
++	entry->original_height = original_height;
+ 	return bitmap_handle;
+ }
+ 
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index a914f3ffd9b..fdaf17ac60e 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -265,6 +265,45 @@ TEST_F(DDSBitmapOriginalSizeTest, original_size_is_available_before_pixel_loadin
+ 	bm_release(handle);
+ }
+ 
++TEST_F(DDSBitmapOriginalSizeTest, reload_updates_original_size_after_validation)
++{
++	const auto write_texture = [this](uint side, uint levels) {
++		std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE));
++		ASSERT_NE(nullptr, fp);
++		write_header(fp.get(), side, side, levels);
++		for (uint level = 0; level < levels; ++level) {
++			const int mip_side = static_cast<int>(side >> level);
++			const auto bytes = dds_compressed_mip_size(mip_side, mip_side, 8);
++			const SCP_vector<ubyte> blocks(bytes, 0);
++			ASSERT_EQ(static_cast<int>(bytes), cfwrite(blocks.data(), 1, static_cast<int>(bytes), fp.get()));
++		}
++	};
++
++	ASSERT_NO_FATAL_FAILURE(write_texture(512, 2));
++	const int handle = bm_load(source_name, CF_TYPE_CACHE);
++	ASSERT_GE(handle, 0);
++	int original_width = 0, original_height = 0;
++	ASSERT_GE(bm_get_original_size(handle, &original_width, &original_height), 0);
++	EXPECT_EQ(512, original_width);
++	EXPECT_EQ(512, original_height);
++
++	const SCP_string filename = source_name;
++	const auto reload_name = filename.substr(0, filename.find_last_of('.'));
++	// Both files load as 256x256 ETC2 with one mip, so the reload can reuse the slot.
++	ASSERT_NO_FATAL_FAILURE(write_texture(256, 1));
++	ASSERT_EQ(handle, bm_reload(handle, reload_name.c_str()));
++	ASSERT_GE(bm_get_original_size(handle, &original_width, &original_height), 0);
++	EXPECT_EQ(256, original_width);
++	EXPECT_EQ(256, original_height);
++
++	ASSERT_NO_FATAL_FAILURE(write_texture(128, 1));
++	EXPECT_EQ(-1, bm_reload(handle, reload_name.c_str()));
++	ASSERT_GE(bm_get_original_size(handle, &original_width, &original_height), 0);
++	EXPECT_EQ(256, original_width);
++	EXPECT_EQ(256, original_height);
++	bm_release(handle);
++}
++
+ using DDSEffStreamTest = DDSBitmapOriginalSizeTest;
+ 
+ TEST_F(DDSEffStreamTest, streams_bc1_frames_as_color_or_hud_pixels)
+
+From 5a3d9beddcd5e82b43f8d2890ed9768d696faba7 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Mon, 16 Nov 2026 23:42:29 -0300
+Subject: [PATCH 20/24] Preserve original DDS dimensions in 2D rendering and
+ Lua
+
+---
+ code/camera/camera.cpp               |  6 +++---
+ code/graphics/2d.cpp                 |  4 +++-
+ code/graphics/2d.h                   |  2 +-
+ code/graphics/render.cpp             |  4 ++--
+ code/menuui/barracks.cpp             |  4 ++--
+ code/menuui/credits.cpp              |  4 ++--
+ code/menuui/techmenu.cpp             |  5 +++--
+ code/missionui/missioncmdbrief.cpp   |  2 +-
+ code/missionui/missionloopbrief.cpp  |  4 ++--
+ code/network/multi_pinfo.cpp         |  4 ++--
+ code/radar/radar.cpp                 |  2 +-
+ code/scripting/api/libs/graphics.cpp | 12 +++++------
+ code/scripting/api/objs/texture.cpp  |  8 +++----
+ code/ui/slider2.cpp                  |  2 +-
+ test/src/ddsutils/test_ddsutils.cpp  | 31 ++++++++++++++++++++++++++++
+ 15 files changed, 64 insertions(+), 30 deletions(-)
+
+diff --git a/code/camera/camera.cpp b/code/camera/camera.cpp
+index 342372a6907..5d2dec57d36 100644
+--- a/code/camera/camera.cpp
++++ b/code/camera/camera.cpp
+@@ -838,7 +838,7 @@ subtitle::subtitle(int in_x_pos, int in_y_pos, const char* in_text, const char*
+ 		//Get image size
+ 		if(image_id != -1)
+ 		{
+-			bm_get_info(image_id, &w, &h);
++			bm_get_original_size(image_id, &w, &h);
+ 			if (in_width > 0)
+ 				w = in_width;
+ 			if (in_height > 0)
+@@ -870,7 +870,7 @@ subtitle::subtitle(int in_x_pos, int in_y_pos, const char* in_text, const char*
+ 	image_pos.h = in_height;
+ 
+ 	if(image_id != -1)
+-		text_pos.x = image_pos.x + w;	//Still set from bm_get_info call
++		text_pos.x = image_pos.x + w;
+ 	else
+ 		text_pos.x = image_pos.x;
+ 	text_pos.y = image_pos.y;
+@@ -954,7 +954,7 @@ void subtitle::do_frame(float frametime)
+ 			int orig_w, orig_h;
+ 			vec3d scale;
+ 
+-			bm_get_info(image_id, &orig_w, &orig_h);
++			bm_get_original_size(image_id, &orig_w, &orig_h);
+ 			scale.xyz.x = (image_pos.w > 0) ? (image_pos.w / (float) orig_w) : 1.0f;
+ 			scale.xyz.y = (image_pos.h > 0) ? (image_pos.h / (float) orig_h) : 1.0f;
+ 			scale.xyz.z = 1.0f;
+diff --git a/code/graphics/2d.cpp b/code/graphics/2d.cpp
+index fb360a0e42b..48dbd13073b 100644
+--- a/code/graphics/2d.cpp
++++ b/code/graphics/2d.cpp
+@@ -2938,7 +2938,9 @@ void gr_bitmap(int _x, int _y, int resize_mode, bool mirror, float scale_factor)
+ 		return;
+ 	}
+ 
+-	bm_get_info(gr_screen.current_bitmap, &_w, &_h, NULL, NULL, NULL);
++	if (bm_get_original_size(gr_screen.current_bitmap, &_w, &_h) < 0) {
++		return;
++	}
+ 
+ 	if (scale_factor != 1.0f) {
+ 		_w = static_cast<int>(_w * scale_factor);
+diff --git a/code/graphics/2d.h b/code/graphics/2d.h
+index 7f890488ca6..27d0cfc5b7c 100644
+--- a/code/graphics/2d.h
++++ b/code/graphics/2d.h
+@@ -1619,7 +1619,7 @@ bool gr_compare_color_values(const color& clr1, const color& clr2);
+ void gr_create_shader(shader *shade, ubyte r, ubyte g, ubyte b, ubyte c);
+ void gr_set_shader(shader *shade);
+ 
+-// new bitmap functions
++// Draw the full bitmap at its original dimensions, adjusted by scale_factor and resize_mode.
+ void gr_bitmap(int x, int y, int resize_mode = GR_RESIZE_FULL, bool mirror = false, float scale_factor = 1.0f);
+ void gr_bitmap_uv(int _x, int _y, int _w, int _h, float _u0, float _v0, float _u1, float _v1, int resize_mode = GR_RESIZE_FULL);
+ 
+diff --git a/code/graphics/render.cpp b/code/graphics/render.cpp
+index f58228f2e2e..627a77ec19a 100644
+--- a/code/graphics/render.cpp
++++ b/code/graphics/render.cpp
+@@ -1327,9 +1327,9 @@ static void draw_bitmap_list(bitmap_rect_list* list, int n_bm, int resize_mode,
+ 	for (int i = 0; i < n_bm; i++) {
+ 		bitmap_2d_list* l = &list[i].screen_rect;
+ 
+-		// if no valid hight or width values were given get some from the bitmap
++		// Default the destination rectangle to the bitmap's original size.
+ 		if ((l->w <= 0) || (l->h <= 0)) {
+-			bm_get_info(gr_screen.current_bitmap, &l->w, &l->h, nullptr, nullptr, nullptr);
++			bm_get_original_size(gr_screen.current_bitmap, &l->w, &l->h);
+ 		}
+ 
+ 		if (resize_mode != GR_RESIZE_NONE && (gr_screen.custom_size || (gr_screen.rendering_to_texture != -1))) {
+diff --git a/code/menuui/barracks.cpp b/code/menuui/barracks.cpp
+index 0cab6122f01..4bc683e0d09 100644
+--- a/code/menuui/barracks.cpp
++++ b/code/menuui/barracks.cpp
+@@ -1618,7 +1618,7 @@ void barracks_do_frame(float  /*frametime*/)
+ 			if (Pilot_images[Pic_number] >= 0) {
+ 				int w, h;
+ 
+-				bm_get_info(Pilot_images[Pic_number], &w, &h, NULL);
++				bm_get_original_size(Pilot_images[Pic_number], &w, &h);
+ 				// check for invalid pilot pic file
+ 				if ((w != PLAYER_PILOT_PIC_W) || (h != PLAYER_PILOT_PIC_H)) {
+ 					bm_release(Pilot_images[Pic_number]);
+@@ -1637,7 +1637,7 @@ void barracks_do_frame(float  /*frametime*/)
+ 			if (Pilot_squad_images[Pic_squad_number] >= 0) {
+ 				int w, h;
+ 
+-				bm_get_info(Pilot_squad_images[Pic_squad_number], &w, &h, NULL);
++				bm_get_original_size(Pilot_squad_images[Pic_squad_number], &w, &h);
+ 				// check for invalid pilot pic file
+ 				if ((w != PLAYER_SQUAD_PIC_W) || (h != PLAYER_SQUAD_PIC_H)) {
+ 					bm_release(Pilot_squad_images[Pic_squad_number]);
+diff --git a/code/menuui/credits.cpp b/code/menuui/credits.cpp
+index 160069b98ce..1cb4095af97 100644
+--- a/code/menuui/credits.cpp
++++ b/code/menuui/credits.cpp
+@@ -819,8 +819,8 @@ void credits_do_frame(float  /*frametime*/)
+ 		Assert(percent >= 0 && percent <= 100);
+ 
+ 		// get width and height
+-		bm_get_info(bm1, &bw1, &bh1, NULL, NULL, NULL);	
+-		bm_get_info(bm2, &bw2, &bh2, NULL, NULL, NULL);	
++		bm_get_original_size(bm1, &bw1, &bh1);
++		bm_get_original_size(bm2, &bw2, &bh2);
+ 	
+ 		// determine where to draw the coords
+ 		bx1 = Credits_image_coords[gr_screen.res][CREDITS_X_COORD] + ((Credits_image_coords[gr_screen.res][CREDITS_W_COORD] - bw1)/2);
+diff --git a/code/menuui/techmenu.cpp b/code/menuui/techmenu.cpp
+index 8981a695c28..6cb10ffa163 100644
+--- a/code/menuui/techmenu.cpp
++++ b/code/menuui/techmenu.cpp
+@@ -773,7 +773,8 @@ void techroom_anim_render(float frametime)
+ 	if(Current_list->at(Cur_entry).animation.num_frames > 0)
+ 	{
+ 		//grab dimensions
+-		bm_get_info((Current_list->at(Cur_entry).animation.streaming) ? Current_list->at(Cur_entry).animation.bitmap_id : Current_list->at(Cur_entry).animation.first_frame, &x, &y, nullptr, nullptr, nullptr);
++		const auto& animation = Current_list->at(Cur_entry).animation;
++		bm_get_original_size(animation.streaming ? animation.bitmap_id : animation.first_frame, &x, &y);
+ 		//get the centre point - adjust
+ 		x = Tech_ani_centre_coords[gr_screen.res][0] - x / 2;
+ 		y = Tech_ani_centre_coords[gr_screen.res][1] - y / 2;
+@@ -782,7 +783,7 @@ void techroom_anim_render(float frametime)
+ 	// if our active item has a bitmap instead of an animation, draw it
+ 	else if((Cur_entry >= 0) && (Current_list->at(Cur_entry).bitmap >= 0)){
+ 		//grab dimensions
+-		bm_get_info(Current_list->at(Cur_entry).bitmap, &x, &y, nullptr, nullptr, nullptr);
++		bm_get_original_size(Current_list->at(Cur_entry).bitmap, &x, &y);
+ 		//get the centre point - adjust
+ 		x = Tech_ani_centre_coords[gr_screen.res][0] - x / 2;
+ 		y = Tech_ani_centre_coords[gr_screen.res][1] - y / 2;
+diff --git a/code/missionui/missioncmdbrief.cpp b/code/missionui/missioncmdbrief.cpp
+index 5dbd5d055ac..546863158f6 100644
+--- a/code/missionui/missioncmdbrief.cpp
++++ b/code/missionui/missioncmdbrief.cpp
+@@ -734,7 +734,7 @@ void cmd_brief_do_frame(float frametime)
+ 	} 
+ 
+ 	if(Cur_Anim.num_frames > 0) {
+-		bm_get_info((Cur_Anim.streaming) ? Cur_Anim.bitmap_id : Cur_Anim.first_frame, &x, &y, NULL, NULL, NULL);
++		bm_get_original_size(Cur_Anim.streaming ? Cur_Anim.bitmap_id : Cur_Anim.first_frame, &x, &y);
+ 		x = Cmd_image_center_coords[gr_screen.res][CMD_X_COORD] - x / 2;
+ 		y = Cmd_image_center_coords[gr_screen.res][CMD_Y_COORD] - y / 2;
+ 		generic_anim_render(&Cur_Anim, (Cmd_brief_paused) ? 0 : frametime, x, y, true);
+diff --git a/code/missionui/missionloopbrief.cpp b/code/missionui/missionloopbrief.cpp
+index 5871f213383..166bb257913 100644
+--- a/code/missionui/missionloopbrief.cpp
++++ b/code/missionui/missionloopbrief.cpp
+@@ -254,7 +254,7 @@ void loop_brief_do(float frametime)
+ 		int x;
+ 		int y;
+ 
+-		bm_get_info((Loop_anim.streaming) ? Loop_anim.bitmap_id : Loop_anim.first_frame, &x, &y, NULL, NULL, NULL);
++		bm_get_original_size(Loop_anim.streaming ? Loop_anim.bitmap_id : Loop_anim.first_frame, &x, &y);
+ 		x = Loop_brief_anim_center_coords[gr_screen.res][0] - x / 2;
+ 		y = Loop_brief_anim_center_coords[gr_screen.res][1] - y / 2;
+ 		generic_anim_render(&Loop_anim, frametime, x, y, true);
+@@ -264,7 +264,7 @@ void loop_brief_do(float frametime)
+ 		int x;
+ 		int y;
+ 
+-		bm_get_info((Loop_anim.streaming) ? Loop_anim.bitmap_id : Loop_anim.first_frame, &x, &y, NULL, NULL, NULL);
++		bm_get_original_size(Loop_anim.streaming ? Loop_anim.bitmap_id : Loop_anim.first_frame, &x, &y);
+ 		x = Loop_brief_anim_center_coords[gr_screen.res][0] - x / 2;
+ 		y = Loop_brief_anim_center_coords[gr_screen.res][1] - y / 2;
+ 		generic_anim_render(&Loop_anim, frametime, x, y, true);
+diff --git a/code/network/multi_pinfo.cpp b/code/network/multi_pinfo.cpp
+index c4c11a6bfab..c198bbf0d78 100644
+--- a/code/network/multi_pinfo.cpp
++++ b/code/network/multi_pinfo.cpp
+@@ -494,7 +494,7 @@ void multi_pinfo_blit_pilot_image()
+ 
+ 		// get width and heigh
+ 		int bm_w, bm_h;
+-		bm_get_info(Mp_pilot.bitmap, &bm_w, &bm_h, NULL, NULL, NULL);
++		bm_get_original_size(Mp_pilot.bitmap, &bm_w, &bm_h);
+ 
+ 		gr_bitmap(Multi_pinfo_pilot_coords[gr_screen.res][0] + ((Multi_pinfo_pilot_coords[gr_screen.res][2] - bm_w)/2), 
+ 					 Multi_pinfo_pilot_coords[gr_screen.res][1] + ((Multi_pinfo_pilot_coords[gr_screen.res][3] - bm_h)/2),
+@@ -542,7 +542,7 @@ void multi_pinfo_blit_squadron_logo()
+ 
+ 		// get width and heigh
+ 		int bm_w, bm_h;
+-		bm_get_info(Mp_squad.bitmap, &bm_w, &bm_h, NULL, NULL, NULL);
++		bm_get_original_size(Mp_squad.bitmap, &bm_w, &bm_h);
+ 
+ 		gr_bitmap(Multi_pinfo_squad_coords[gr_screen.res][0] + ((Multi_pinfo_squad_coords[gr_screen.res][2] - bm_w)/2), 
+ 					 Multi_pinfo_squad_coords[gr_screen.res][1] + ((Multi_pinfo_squad_coords[gr_screen.res][3] - bm_h)/2),
+diff --git a/code/radar/radar.cpp b/code/radar/radar.cpp
+index 1623054f2bd..9e2210c3251 100644
+--- a/code/radar/radar.cpp
++++ b/code/radar/radar.cpp
+@@ -211,7 +211,7 @@ void HudGaugeRadarStd::drawContactImage( int x, int y, int rad, int idx, int clr
+ 	float scalef, wf, hf, xf, yf;
+ 	vec3d blip_scaler;
+ 
+-	if(bm_get_info(idx, &w, &h) < 0)
++	if(bm_get_original_size(idx, &w, &h) < 0)
+ 	{
+ 		// Just if something goes terribly wrong
+ 		drawContactCircle(x, y, rad);
+diff --git a/code/scripting/api/libs/graphics.cpp b/code/scripting/api/libs/graphics.cpp
+index 7540702fdb0..0e2f2c08a4f 100644
+--- a/code/scripting/api/libs/graphics.cpp
++++ b/code/scripting/api/libs/graphics.cpp
+@@ -1775,7 +1775,7 @@ ADE_FUNC(drawImage,
+ 		return ade_set_error(L, "b", false);
+ 
+ 	int w, h;
+-	if(bm_get_info(idx, &w, &h) < 0)
++	if(bm_get_original_size(idx, &w, &h) < 0)
+ 		return ADE_RETURN_FALSE;
+ 
+ 	if(x2!=INT_MAX)
+@@ -1867,7 +1867,7 @@ ADE_FUNC(drawImageCentered,
+ 		return ade_set_error(L, "b", false);
+ 
+ 	int original_w, original_h;
+-	if(bm_get_info(idx, &original_w, &original_h) < 0)
++	if(bm_get_original_size(idx, &original_w, &original_h) < 0)
+ 		return ADE_RETURN_FALSE;
+ 
+ 	if(w==INT_MAX)
+@@ -1964,7 +1964,7 @@ ADE_FUNC_DEPRECATED(drawMonochromeImage,
+ 	return ADE_RETURN_TRUE;
+ }
+ 
+-ADE_FUNC(getImageWidth, l_Graphics, "string Filename", "Gets image width", "number", "Image width, or 0 if filename is invalid")
++ADE_FUNC(getImageWidth, l_Graphics, "string Filename", "Gets the original image width", "number", "Image width, or 0 if filename is invalid")
+ {
+ 	const char* s;
+ 	if(!ade_get_args(L, "s", &s))
+@@ -1977,11 +1977,11 @@ ADE_FUNC(getImageWidth, l_Graphics, "string Filename", "Gets image width", "numb
+ 	if(idx < 0)
+ 		return ade_set_error(L, "i", 0);
+ 
+-	bm_get_info(idx, &w);
++	bm_get_original_size(idx, &w);
+ 	return ade_set_args(L, "i", w);
+ }
+ 
+-ADE_FUNC(getImageHeight, l_Graphics, "string name", "Gets image height", "number", "Image height, or 0 if filename is invalid")
++ADE_FUNC(getImageHeight, l_Graphics, "string name", "Gets the original image height", "number", "Image height, or 0 if filename is invalid")
+ {
+ 	const char* s;
+ 	if(!ade_get_args(L, "s", &s))
+@@ -1994,7 +1994,7 @@ ADE_FUNC(getImageHeight, l_Graphics, "string name", "Gets image height", "number
+ 	if(idx < 0)
+ 		return ade_set_error(L, "i", 0);
+ 
+-	bm_get_info(idx, NULL, &h);
++	bm_get_original_size(idx, nullptr, &h);
+ 	return ade_set_args(L, "i", h);
+ }
+ 
+diff --git a/code/scripting/api/objs/texture.cpp b/code/scripting/api/objs/texture.cpp
+index 43c7228a41b..c1e49688274 100644
+--- a/code/scripting/api/objs/texture.cpp
++++ b/code/scripting/api/objs/texture.cpp
+@@ -151,7 +151,7 @@ ADE_FUNC(getFilename, l_Texture, NULL, "Returns filename for texture", "string",
+ 	return ade_set_args(L, "s", bm_get_filename(th->handle));
+ }
+ 
+-ADE_FUNC(getWidth, l_Texture, NULL, "Gets texture width", "number", "Texture width, or 0 if handle is invalid")
++ADE_FUNC(getWidth, l_Texture, NULL, "Gets the original texture width", "number", "Texture width, or 0 if handle is invalid")
+ {
+ 	texture_h* th;
+ 	if (!ade_get_args(L, "o", l_Texture.GetPtr(&th)))
+@@ -162,13 +162,13 @@ ADE_FUNC(getWidth, l_Texture, NULL, "Gets texture width", "number", "Texture wid
+ 
+ 	int w = -1;
+ 
+-	if (bm_get_info(th->handle, &w) < 0)
++	if (bm_get_original_size(th->handle, &w) < 0)
+ 		return ade_set_error(L, "i", 0);
+ 
+ 	return ade_set_args(L, "i", w);
+ }
+ 
+-ADE_FUNC(getHeight, l_Texture, NULL, "Gets texture height", "number", "Texture height, or 0 if handle is invalid")
++ADE_FUNC(getHeight, l_Texture, NULL, "Gets the original texture height", "number", "Texture height, or 0 if handle is invalid")
+ {
+ 	texture_h* th;
+ 	if (!ade_get_args(L, "o", l_Texture.GetPtr(&th)))
+@@ -179,7 +179,7 @@ ADE_FUNC(getHeight, l_Texture, NULL, "Gets texture height", "number", "Texture h
+ 
+ 	int h=-1;
+ 
+-	if (bm_get_info(th->handle, nullptr, &h) < 0)
++	if (bm_get_original_size(th->handle, nullptr, &h) < 0)
+ 		return ade_set_error(L, "i", 0);
+ 
+ 	return ade_set_args(L, "i", h);
+diff --git a/code/ui/slider2.cpp b/code/ui/slider2.cpp
+index da1b5e7c042..42af4a19312 100644
+--- a/code/ui/slider2.cpp
++++ b/code/ui/slider2.cpp
+@@ -41,7 +41,7 @@ void UI_SLIDER2::create(UI_WINDOW *wnd, int _x, int _y, int _w, int _h, int _num
+ 	set_bmaps(_bitmapSliderControl, 3, 0);
+ 	
+ 	// determine possible positions
+-	bm_get_info(bmap_ids[S2_NORMAL],&buttonWidth, &buttonHeight, NULL, NULL, NULL);
++	bm_get_original_size(bmap_ids[S2_NORMAL], &buttonWidth, &buttonHeight);
+ 	slider_w = buttonWidth;
+ 	slider_h = buttonHeight;
+ 	Assert(buttonHeight > 5);
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index fdaf17ac60e..d3428387bef 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -5,6 +5,7 @@
+ #include "graphics/2d.h"
+ #include "graphics/generic.h"
+ #include "ktxutils/etcdec.h"
++#include "scripting/scripting.h"
+ #include "util/FSTestFixture.h"
+ 
+ #include <algorithm>
+@@ -304,6 +305,36 @@ TEST_F(DDSBitmapOriginalSizeTest, reload_updates_original_size_after_validation)
+ 	bm_release(handle);
+ }
+ 
++TEST_F(DDSBitmapOriginalSizeTest, lua_reports_the_original_size_after_dropping_a_mip)
++{
++	std::unique_ptr<CFILE> fp(cfopen(source_name, "wb", CF_TYPE_CACHE));
++	ASSERT_NE(nullptr, fp);
++	write_header(fp.get(), 512, 1024, 2);
++	const SCP_vector<ubyte> blocks(dds_compressed_mip_size(512, 1024, 8) + dds_compressed_mip_size(256, 512, 8), 0);
++	ASSERT_EQ(static_cast<int>(blocks.size()), cfwrite(blocks.data(), 1, static_cast<int>(blocks.size()), fp.get()));
++	fp.reset();
++
++	const int handle = bm_load(source_name);
++	ASSERT_GE(handle, 0);
++	int width = 0, height = 0;
++	ASSERT_GE(bm_get_info(handle, &width, &height), 0);
++	ASSERT_EQ(256, width);
++	ASSERT_EQ(512, height);
++
++	script_state lua("DDS image size test");
++	ASSERT_NE(0, lua.CreateLuaState());
++	const auto script = SCP_string("local name = '") + source_name + "'\n" + R"(
++		assert(gr.getImageWidth(name) == 512)
++		assert(gr.getImageHeight(name) == 1024)
++		local tex = gr.loadTexture(name)
++		assert(tex:getWidth() == 512)
++		assert(tex:getHeight() == 1024)
++		tex:unload()
++	)";
++	EXPECT_TRUE(lua.EvalString(script.c_str()));
++	bm_release(handle);
++}
++
+ using DDSEffStreamTest = DDSBitmapOriginalSizeTest;
+ 
+ TEST_F(DDSEffStreamTest, streams_bc1_frames_as_color_or_hud_pixels)
+
+From c998d2c5319641630276bb8abb87e2ac5a08c6e8 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 17 Nov 2026 00:13:50 -0300
+Subject: [PATCH 21/24] clang tidy change
+
+---
+ code/scripting/api/objs/texture.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/code/scripting/api/objs/texture.cpp b/code/scripting/api/objs/texture.cpp
+index c1e49688274..d09cecc428c 100644
+--- a/code/scripting/api/objs/texture.cpp
++++ b/code/scripting/api/objs/texture.cpp
+@@ -151,7 +151,7 @@ ADE_FUNC(getFilename, l_Texture, NULL, "Returns filename for texture", "string",
+ 	return ade_set_args(L, "s", bm_get_filename(th->handle));
+ }
+ 
+-ADE_FUNC(getWidth, l_Texture, NULL, "Gets the original texture width", "number", "Texture width, or 0 if handle is invalid")
++ADE_FUNC(getWidth, l_Texture, nullptr, "Gets the original texture width", "number", "Texture width, or 0 if handle is invalid")
+ {
+ 	texture_h* th;
+ 	if (!ade_get_args(L, "o", l_Texture.GetPtr(&th)))
+@@ -168,7 +168,7 @@ ADE_FUNC(getWidth, l_Texture, NULL, "Gets the original texture width", "number",
+ 	return ade_set_args(L, "i", w);
+ }
+ 
+-ADE_FUNC(getHeight, l_Texture, NULL, "Gets the original texture height", "number", "Texture height, or 0 if handle is invalid")
++ADE_FUNC(getHeight, l_Texture, nullptr, "Gets the original texture height", "number", "Texture height, or 0 if handle is invalid")
+ {
+ 	texture_h* th;
+ 	if (!ade_get_args(L, "o", l_Texture.GetPtr(&th)))
+
+From 5e613fc52045c263847202459f65d4787d48e830 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 17 Nov 2026 00:53:00 -0300
+Subject: [PATCH 22/24] fix compile error
+
+---
+ code/graphics/generic.cpp | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/code/graphics/generic.cpp b/code/graphics/generic.cpp
+index 0565d2d97bf..d5d216a36dd 100644
+--- a/code/graphics/generic.cpp
++++ b/code/graphics/generic.cpp
+@@ -255,9 +255,10 @@ int generic_anim_stream(generic_anim *ga, const bool cache)
+ 		if ( p )
+ 			*p = 0;
+ 		char frame_name[MAX_FILENAME_LEN];
+-		if (snprintf(frame_name, MAX_FILENAME_LEN, "%s_0000", ga->filename) >= MAX_FILENAME_LEN) {
+-			// Make sure the string is null terminated
+-			frame_name[MAX_FILENAME_LEN - 1] = '\0';
++		const int frame_name_length = snprintf(frame_name, sizeof(frame_name), "%s_0000", ga->filename);
++		if (frame_name_length < 0 || frame_name_length >= MAX_FILENAME_LEN) {
++			mprintf(("Cannot format first frame name for EFF streaming: %s\n", ga->filename));
++			return -1;
+ 		}
+ 		ga->bitmap_id = bm_load(frame_name);
+ 		if(ga->bitmap_id < 0) {
+@@ -288,7 +289,8 @@ int generic_anim_stream(generic_anim *ga, const bool cache)
+ 			}
+ 		}
+ 		if (!ga->buffer) {
+-			snprintf(frame_name, MAX_FILENAME_LEN, "%s_0001", ga->filename);
++			// Reuse the validated frame name and change its suffix from _0000 to _0001.
++			frame_name[frame_name_length - 1] = '1';
+ 			ga->eff.next_frame = bm_load(frame_name);
+ 			bm_get_info(ga->bitmap_id, &ga->width, &ga->height);
+ 		}
+
+From 80ef877980d7d235b649d3744a28723b6a3d3135 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 17 Nov 2026 07:02:55 -0300
+Subject: [PATCH 23/24] rename variable
+
+---
+ test/src/ddsutils/test_ddsutils.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/test/src/ddsutils/test_ddsutils.cpp b/test/src/ddsutils/test_ddsutils.cpp
+index d3428387bef..d273c3f2694 100644
+--- a/test/src/ddsutils/test_ddsutils.cpp
++++ b/test/src/ddsutils/test_ddsutils.cpp
+@@ -181,12 +181,12 @@ TEST_F(DDSConversionResizeTest, resized_dxt5_skips_top_mip_and_writes_rgba8_bloc
+ 	EXPECT_EQ(32, bpp);
+ 	EXPECT_TRUE(std::all_of(data.begin() + expected_size, data.end(), [](ubyte value) { return value == sentinel; }));
+ 
+-	const auto check_block = [&data](size_t offset, ubyte color, ubyte alpha) {
++	const auto check_block = [&data](size_t offset, ubyte expected_color, ubyte alpha) {
+ 		SCOPED_TRACE(::testing::Message() << "ETC2 block at byte " << offset);
+ 		alignas(uint) std::array<ubyte, 4 * 4 * 4> rgba{};
+ 		etcdec_eac_rgba(data.data() + offset, rgba.data(), 4 * 4);
+ 		for (size_t channel = 0; channel < 3; ++channel) {
+-			EXPECT_NEAR(color, rgba[channel], 8);
++			EXPECT_NEAR(expected_color, rgba[channel], 8);
+ 		}
+ 		EXPECT_NEAR(alpha, rgba[3], 8);
+ 	};
+
+From 9290bdd5c1b03c3a81948e9cc115e004ead28de2 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Tue, 17 Nov 2026 07:44:12 -0300
+Subject: [PATCH 24/24] Use allow to use original_size in gr_aabitmap()
+
+---
+ code/graphics/render.cpp | 34 ++++++++++++++++------------------
+ code/graphics/render.h   |  3 ++-
+ code/hud/hud.cpp         |  4 ++--
+ code/hud/hud.h           |  2 +-
+ code/radar/radar.cpp     |  2 +-
+ 5 files changed, 22 insertions(+), 23 deletions(-)
+
+diff --git a/code/graphics/render.cpp b/code/graphics/render.cpp
+index 627a77ec19a..7c402823588 100644
+--- a/code/graphics/render.cpp
++++ b/code/graphics/render.cpp
+@@ -93,11 +93,12 @@ static void bitmap_ex_internal(int x,
+ 							   int h,
+ 							   int sx,
+ 							   int sy,
++							   int bw,
++							   int bh,
+ 							   int resize_mode,
+ 							   bool aabitmap,
+ 							   bool mirror,
+-							   color* clr,
+-							   float scale_factor = 1.0f) {
++							   color* clr) {
+ 	if ((w < 1) || (h < 1)) {
+ 		return;
+ 	}
+@@ -108,8 +109,6 @@ static void bitmap_ex_internal(int x,
+ 
+ 	float u0, u1, v0, v1;
+ 	float x1, x2, y1, y2;
+-	int bw, bh;
+-
+ 	bool do_resize;
+ 	if (resize_mode != GR_RESIZE_NONE && (gr_screen.custom_size || (gr_screen.rendering_to_texture != -1))) {
+ 		do_resize = true;
+@@ -117,13 +116,6 @@ static void bitmap_ex_internal(int x,
+ 		do_resize = false;
+ 	}
+ 
+-	bm_get_info(gr_screen.current_bitmap, &bw, &bh);
+-
+-	if (scale_factor != 1.0f) {
+-		bw = static_cast<int>(bw * scale_factor);
+-		bh = static_cast<int>(bh * scale_factor);
+-	}
+-
+ 	u0 = (i2fl(sx) / i2fl(bw));
+ 	v0 = (i2fl(sy) / i2fl(bh));
+ 
+@@ -166,7 +158,7 @@ static void bitmap_ex_internal(int x,
+ 	draw_textured_quad(&render_mat, x1, y1, u0, v0, x2, y2, u1, v1);
+ }
+ 
+-void gr_aabitmap(int x, int y, int resize_mode, bool mirror, float scale_factor) {
++void gr_aabitmap(int x, int y, int resize_mode, bool mirror, float scale_factor, bool use_original_size) {
+ 	if (gr_screen.mode == GraphicsAPI::Stub) {
+ 		return;
+ 	}
+@@ -175,7 +167,11 @@ void gr_aabitmap(int x, int y, int resize_mode, bool mirror, float scale_factor)
+ 
+ 	int w, h, do_resize;
+ 
+-	bm_get_info(gr_screen.current_bitmap, &w, &h);
++	const int bitmap_handle = gr_screen.current_bitmap;
++	const int result = use_original_size ? bm_get_original_size(bitmap_handle, &w, &h) : bm_get_info(bitmap_handle, &w, &h);
++	if (result < 0) {
++		return;
++	}
+ 
+ 	if (scale_factor != 1.0f) {
+ 		w = static_cast<int>(w * scale_factor);
+@@ -247,11 +243,12 @@ void gr_aabitmap(int x, int y, int resize_mode, bool mirror, float scale_factor)
+ 					   (dy2 - dy1 + 1),
+ 					   sx,
+ 					   sy,
++					   w,
++					   h,
+ 					   resize_mode,
+ 					   true,
+ 					   mirror,
+-					   &GR_CURRENT_COLOR,
+-					   scale_factor);
++					   &GR_CURRENT_COLOR);
+ }
+ void gr_aabitmap_ex(int x, int y, int w, int h, int sx, int sy, int resize_mode, bool mirror, float scale_factor) {
+ 	if (gr_screen.mode == GraphicsAPI::Stub) {
+@@ -398,11 +395,12 @@ void gr_aabitmap_ex(int x, int y, int w, int h, int sx, int sy, int resize_mode,
+ 		(dy2 - dy1 + 1),
+ 		sx,
+ 		sy,
++		bw,
++		bh,
+ 		resize_mode,
+ 		true,
+ 		mirror,
+-		&GR_CURRENT_COLOR,
+-		scale_factor);
++		&GR_CURRENT_COLOR);
+ }
+ //these are penguins bitmap functions
+ void gr_bitmap_ex(int x, int y, int w, int h, int sx, int sy, int resize_mode, bool mirror, float scale_factor) {
+@@ -547,7 +545,7 @@ void gr_bitmap_ex(int x, int y, int w, int h, int sx, int sy, int resize_mode, b
+ 	gr_init_alphacolor(&clr, 255, 255, 255, fl2i(gr_screen.current_alpha * 255.0f));
+ 
+ 	// We now have dx1,dy1 and dx2,dy2 and sx, sy all set validly within clip regions.
+-	bitmap_ex_internal(dx1, dy1, (dx2 - dx1 + 1), (dy2 - dy1 + 1), sx, sy, resize_mode, false, mirror, &clr, scale_factor);
++	bitmap_ex_internal(dx1, dy1, (dx2 - dx1 + 1), (dy2 - dy1 + 1), sx, sy, bw, bh, resize_mode, false, mirror, &clr);
+ }
+ 
+ #define MAX_VERTS_PER_DRAW 300
+diff --git a/code/graphics/render.h b/code/graphics/render.h
+index 88da9014d89..0aeefcc2dec 100644
+--- a/code/graphics/render.h
++++ b/code/graphics/render.h
+@@ -26,8 +26,9 @@ void gr_flash_alpha(int r, int g, int b, int a);
+  * @param resize_mode The resize mode for translating the coordinated
+  * @param mirror @c true to mirror the image
+  * @param scale_factor a multiplier for the width and height of the bitmap
++ * @param use_original_size Use the original bitmap dimensions when the texture was resized on load
+  */
+-void gr_aabitmap(int x, int y, int resize_mode = GR_RESIZE_FULL, bool mirror = false, float scale_factor = 1.0f);
++void gr_aabitmap(int x, int y, int resize_mode = GR_RESIZE_FULL, bool mirror = false, float scale_factor = 1.0f, bool use_original_size = false);
+ /**
+  * @brief Draws a grey-scale bitmap multiplied with the current color
+  * @param x The x-coordinate of the draw call
+diff --git a/code/hud/hud.cpp b/code/hud/hud.cpp
+index 89ca456aa46..344e558261c 100644
+--- a/code/hud/hud.cpp
++++ b/code/hud/hud.cpp
+@@ -1062,7 +1062,7 @@ void HudGauge::renderBitmapColor(int frame, int x, int y, float scale, bool conf
+ 	gr_reset_screen_scale();
+ }
+ 
+-void HudGauge::renderBitmap(int x, int y, float scale, bool config) const
++void HudGauge::renderBitmap(int x, int y, float scale, bool config, bool use_original_size) const
+ {
+ 	int nx = 0, ny = 0;
+ 
+@@ -1093,7 +1093,7 @@ void HudGauge::renderBitmap(int x, int y, float scale, bool config) const
+ 		resize = HC_resize_mode;
+ 	}
+ 	
+-	gr_aabitmap(x + nx, y + ny, resize, false, scale);
++	gr_aabitmap(x + nx, y + ny, resize, false, scale, use_original_size);
+ 
+ 	gr_reset_screen_scale();
+ }
+diff --git a/code/hud/hud.h b/code/hud/hud.h
+index 8d7ccc9cfea..c16dac463e5 100644
+--- a/code/hud/hud.h
++++ b/code/hud/hud.h
+@@ -362,7 +362,7 @@ class HudGauge
+ 	void setGaugeFrame(int frame_offset);
+ 
+ 	// rendering functions
+-	void renderBitmap(int x, int y, float scale = 1.0f, bool config = false) const;
++	void renderBitmap(int x, int y, float scale = 1.0f, bool config = false, bool use_original_size = false) const;
+ 	void renderBitmap(int frame, int x, int y, float scale = 1.0f, bool config = false) const;
+ 	void renderBitmapColor(int frame, int x, int y, float scale = 1.0f, bool config = false) const;
+ 	void renderBitmapEx(int frame, int x, int y, int w, int h, int sx, int sy, float scale = 1.0f, bool config = false) const;
+diff --git a/code/radar/radar.cpp b/code/radar/radar.cpp
+index 9e2210c3251..c1c416850e4 100644
+--- a/code/radar/radar.cpp
++++ b/code/radar/radar.cpp
+@@ -274,7 +274,7 @@ void HudGaugeRadarStd::drawContactImage( int x, int y, int rad, int idx, int clr
+ 
+ 	if ( idx >= 0 ) {
+ 		gr_set_bitmap(idx,GR_ALPHABLEND_NONE,GR_BITBLT_MODE_NORMAL,1.0f);
+-		renderBitmap( x, y );
++		renderBitmap(x, y, 1.0f, false, /*use_original_size=*/true);
+ 	}
+ 
+ 	if ( clr_idx >= 0 ) {
+

@@ -11,22 +11,21 @@ and was unaffected, but Vulkan trusted the 32 and copied 4 bytes per pixel:
 the animation was drawn as garbage and the copy read past the end of the
 frame's buffer. HUD-colored animations still pass 8.
 ---
- code/graphics/generic.cpp | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
+ code/graphics/generic.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/code/graphics/generic.cpp b/code/graphics/generic.cpp
-index aae13a8a0d0..776b5c35556 100644
+index d5d216a36dd..aded7b8a928 100644
 --- a/code/graphics/generic.cpp
 +++ b/code/graphics/generic.cpp
-@@ -376,8 +376,10 @@ void generic_render_eff_stream(generic_anim *ga)
- 		if(bm_reload(ga->eff.next_frame, frame_name) == ga->eff.next_frame)
- 		{
- 			bitmap* next_frame_bmp = bm_lock(ga->eff.next_frame, bpp, (bpp==8)?BMP_AABITMAP:BMP_TEX_NONCOMP, true);
-+			// the frame's data keeps its own depth (24-bit DDS, JPG, TGA), which renderers need to read it
-+			const int frame_bpp = (bpp == 8) ? bpp : next_frame_bmp->bpp;
+@@ -433,5 +433,9 @@ void generic_render_eff_stream(generic_anim *ga)
  			if(next_frame_bmp->data)
 -				gr_update_texture(ga->bitmap_id, bpp, (ubyte*)next_frame_bmp->data, ga->width, ga->height);
++			{
++				// The renderer needs the depth of the frame's data (24-bit DDS, JPG, or TGA).
++				const int frame_bpp = (bpp == 8) ? bpp : next_frame_bmp->bpp;
 +				gr_update_texture(ga->bitmap_id, frame_bpp, (ubyte*)next_frame_bmp->data, ga->width, ga->height);
++			}
  			bm_unlock(ga->eff.next_frame);
  			bm_unload(ga->eff.next_frame, 0, true);
  			if (ga->current_frame == ga->num_frames-1)
