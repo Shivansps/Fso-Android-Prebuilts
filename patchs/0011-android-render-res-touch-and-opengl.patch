@@ -1,0 +1,136 @@
+diff --git a/code/graphics/2d.cpp b/code/graphics/2d.cpp
+index 67196cba37b5fd43d0860f7737d8ea607c9be6b0..677ba9e4f7d30c0668e47089ec1055ff7af63a85 100644
+--- a/code/graphics/2d.cpp
++++ b/code/graphics/2d.cpp
+@@ -2180,25 +2180,38 @@ void gr_screen_resize(int width, int height)
+ 	gr_setup_viewport();
+ }
+ 
+-void gr_window_to_render_pos(float& x, float& y)
++static std::optional<std::pair<int, int>> window_input_size()
+ {
+-	if (!Cmdline_window_res) {
+-		// Rendering goes straight to the window, so the two spaces are the same
+-		return;
++#ifdef __ANDROID__
++	// SDL emits touch-as-mouse positions in window coordinates, even if Android
++	// sized the window differently from the resolution requested at creation.
++	if (auto* window = os::getSDLMainWindow()) {
++		int width, height;
++		if (SDL_GetWindowSize(window, &width, &height) && width > 0 && height > 0) {
++			return std::make_pair(width, height);
++		}
+ 	}
++#endif
++	if (Cmdline_window_res && Cmdline_window_res->first > 0 && Cmdline_window_res->second > 0) {
++		return Cmdline_window_res;
++	}
++	return std::nullopt;
++}
+ 
+-	x *= i2fl(gr_screen.max_w) / static_cast<float>(Cmdline_window_res->first);
+-	y *= i2fl(gr_screen.max_h) / static_cast<float>(Cmdline_window_res->second);
++void gr_window_to_render_pos(float& x, float& y)
++{
++	if (const auto size = window_input_size()) {
++		x *= i2fl(gr_screen.max_w) / i2fl(size->first);
++		y *= i2fl(gr_screen.max_h) / i2fl(size->second);
++	}
+ }
+ 
+ void gr_render_to_window_pos(float& x, float& y)
+ {
+-	if (!Cmdline_window_res) {
+-		return;
++	if (const auto size = window_input_size(); size && gr_screen.max_w > 0 && gr_screen.max_h > 0) {
++		x *= i2fl(size->first) / i2fl(gr_screen.max_w);
++		y *= i2fl(size->second) / i2fl(gr_screen.max_h);
+ 	}
+-
+-	x *= static_cast<float>(Cmdline_window_res->first) / i2fl(gr_screen.max_w);
+-	y *= static_cast<float>(Cmdline_window_res->second) / i2fl(gr_screen.max_h);
+ }
+ 
+ int gr_get_resolution_class(int width, int height)
+diff --git a/code/graphics/2d.h b/code/graphics/2d.h
+index 5533eff388e0e1eda6328970ac03a801d8acc1c5..b9fc2da412b9c2be2c8cb92aa1fcdcdfc955c4c5 100644
+--- a/code/graphics/2d.h
++++ b/code/graphics/2d.h
+@@ -1162,11 +1162,12 @@ extern void gr_screen_resize(int width, int height);
+ extern int gr_get_resolution_class(int width, int height);
+ 
+ /**
+- * @brief Converts a position or delta from OS window pixels into internal render-target pixels
++ * @brief Converts a position or delta from SDL window coordinates into internal render-target pixels
+  *
+  * @details When -window_res is in effect the frame is rendered into an offscreen buffer sized
+  * gr_screen.max_w/max_h and only stretched to the window when we flip, so everything the engine
+- * draws lives in render space while SDL reports input in window space. These are pure scale
++ * draws lives in render space while SDL reports input in window space. Android can size the
++ * SDL window independently of -window_res, so it uses the actual window dimensions. These are pure scale
+  * factors with no offset, so they are equally valid for absolute positions and for deltas.
+  *
+  * Note that this is unrelated to the gr_resize_screen_pos() family, which handles the retail
+@@ -1175,7 +1176,7 @@ extern int gr_get_resolution_class(int width, int height);
+ void gr_window_to_render_pos(float& x, float& y);
+ 
+ /**
+- * @brief Converts a position or delta from internal render-target pixels into OS window pixels
++ * @brief Converts a position or delta from internal render-target pixels into SDL window coordinates
+  *
+  * @see gr_window_to_render_pos
+  */
+diff --git a/code/graphics/opengl/gropengl.cpp b/code/graphics/opengl/gropengl.cpp
+index 8582c98b479958593d458f5ca8e4f6215ad67079..9bcd1fa07f7cc424f52a210711ce5da9a33c946a 100644
+--- a/code/graphics/opengl/gropengl.cpp
++++ b/code/graphics/opengl/gropengl.cpp
+@@ -48,6 +48,9 @@
+ 
+ #include "backends/imgui_impl_opengl3.h"
+ 
++#ifdef __ANDROID__
++#include <SDL3/SDL_video.h>
++#endif
+ #include <glad/glad.h>
+ 
+ // minimum GL / GLES version we can reliably support is 3.2
+@@ -160,12 +163,25 @@ void gr_opengl_flip()
+ 			present_source = GammaBlit_framebuffer;
+ 		}
+ 
++		int output_width = Cmdline_window_res->first;
++		int output_height = Cmdline_window_res->second;
++#ifdef __ANDROID__
++		// Android may size the drawable independently of the requested window size.
++		if (auto* window = current_viewport->toSDLWindow()) {
++			int drawable_width, drawable_height;
++			if (SDL_GetWindowSizeInPixels(window, &drawable_width, &drawable_height) && drawable_width > 0 && drawable_height > 0) {
++				output_width = drawable_width;
++				output_height = drawable_height;
++			}
++		}
++#endif
++
+ 		GL_state.BindFrameBuffer(0, GL_DRAW_FRAMEBUFFER);
+ 		GL_state.BindFrameBuffer(present_source, GL_READ_FRAMEBUFFER);
+ 
+ 		glReadBuffer(GL_COLOR_ATTACHMENT0);
+ 		glDrawBuffer(GL_BACK);
+-		glBlitFramebuffer(0, 0, opengl_screen_pixel_width(), opengl_screen_pixel_height(), 0, 0, Cmdline_window_res->first, Cmdline_window_res->second, GL_COLOR_BUFFER_BIT, GL_LINEAR);
++		glBlitFramebuffer(0, 0, opengl_screen_pixel_width(), opengl_screen_pixel_height(), 0, 0, output_width, output_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+ 		glDrawBuffer(GL_NONE);
+ 
+ 		GL_state.BindFrameBuffer(0, GL_READ_FRAMEBUFFER);
+diff --git a/code/osapi/osapi.cpp b/code/osapi/osapi.cpp
+index 319a193db8bf517c79001898f534fcf7f886cba2..1a335356affeee5f80230d97d4c10759bd9f8ddb 100644
+--- a/code/osapi/osapi.cpp
++++ b/code/osapi/osapi.cpp
+@@ -695,6 +695,8 @@ namespace os
+ 		return mainViewPort;
+ 	}
+ 	void closeAllViewports() {
++		mainViewPort = nullptr;
++		mainSDLWindow = nullptr;
+ 		viewports.clear();
+ 	}
+ 
