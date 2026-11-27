@@ -1,0 +1,1066 @@
+From c9a25180cc1499c8f0d601a396b2d258b13b8b14 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Thu, 26 Nov 2026 23:07:17 -0300
+Subject: [PATCH 1/4] Initial ARM ASR support
+
+---
+ cmake/util.cmake                            |   5 +-
+ code/cmdline/cmdline.cpp                    |   2 +-
+ code/graphics/2d.cpp                        |  45 ++-
+ code/graphics/2d.h                          |  12 +-
+ code/graphics/vulkan/VulkanPostProcessing.h |   4 +-
+ code/graphics/vulkan/VulkanUpscaler.cpp     |  87 ++++--
+ lib/CMakeLists.txt                          |   9 +-
+ lib/ffx/CMakeLists.txt                      |  41 ++-
+ lib/ffx/include/ffx_portable.h              |  10 +
+ lib/ffx/src/android/arm_asr.cpp             | 313 ++++++++++++++++++++
+ 10 files changed, 469 insertions(+), 59 deletions(-)
+ create mode 100644 lib/ffx/src/android/arm_asr.cpp
+
+diff --git a/cmake/util.cmake b/cmake/util.cmake
+index e56da631e5d..2aaa3d459cd 100644
+--- a/cmake/util.cmake
++++ b/cmake/util.cmake
+@@ -115,11 +115,12 @@ MACRO(COPY_FILES_TO_TARGET _target)
+ 	# Third party licenses that have to accompany the copied binaries
+ 	get_property(_ffx_license GLOBAL PROPERTY FSO_FFX_LICENSE_FILE)
+ 	if (_ffx_license)
++		get_property(_ffx_license_name GLOBAL PROPERTY FSO_FFX_LICENSE_NAME)
+ 		ADD_CUSTOM_COMMAND(
+ 			TARGET ${_target} POST_BUILD
+ 			COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${_target}>/license"
+-			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_ffx_license}" "$<TARGET_FILE_DIR:${_target}>/license/amd_ffx.txt"
+-			COMMENT "copying AMD FidelityFX license..."
++			COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_ffx_license}" "$<TARGET_FILE_DIR:${_target}>/license/${_ffx_license_name}"
++			COMMENT "copying temporal upscaler license..."
+ 			VERBATIM
+ 		)
+ 	endif()
+diff --git a/code/cmdline/cmdline.cpp b/code/cmdline/cmdline.cpp
+index 6cf8f535b4e..129b51d9662 100644
+--- a/code/cmdline/cmdline.cpp
++++ b/code/cmdline/cmdline.cpp
+@@ -2142,7 +2142,7 @@ bool SetCmdlineParams()
+ 		if (mode >= static_cast<int>(FsrMode::Off) && mode <= static_cast<int>(FsrMode::Upscale)) {
+ 			// What of this can run is only known once the renderer is up; gr_init settles it on the closest offered setting
+ 			Gr_fsr_mode = static_cast<FsrMode>(mode);
+-			Gr_fsr_major_version = 0;
++			Gr_upscaler_provider = 0;
+ 			options::OptionsManager::instance()->setOverride("Graphics.FSR", std::unique_ptr<json_t>(json_integer(mode)), "-fsr");
+ 		}
+ 	}
+diff --git a/code/graphics/2d.cpp b/code/graphics/2d.cpp
+index 67196cba37b..7d0fa6ad5c0 100644
+--- a/code/graphics/2d.cpp
++++ b/code/graphics/2d.cpp
+@@ -61,6 +61,9 @@
+ #endif
+ #ifdef WITH_VULKAN
+ #include "graphics/vulkan/gr_vulkan.h"
++#ifdef __ANDROID__
++#include "graphics/vulkan/VulkanRenderer.h"
++#endif
+ #endif
+ 
+ #include <algorithm>
+@@ -1031,8 +1034,8 @@ static auto AAOption __UNUSED = options::OptionBuilder<AntiAliasMode>("Graphics.
+                      .finish();
+ 
+ FsrMode Gr_fsr_mode = FsrMode::Off;
+-int Gr_fsr_major_version = 0;
+-SCP_vector<SCP_string> Gr_fsr_versions;
++int Gr_upscaler_provider = 0;
++SCP_vector<TemporalUpscalerProvider> Gr_upscaler_providers;
+ int Gr_max_output_size = 0;
+ float Gr_composition_scale = 1.0f;
+ bool Gr_native_res_hud = false;
+@@ -1043,8 +1046,21 @@ static float output_scale_factor()
+ 	std::optional<std::pair<int, int>> output;
+ 	if (openxr_requested()) {
+ 		output = openxr_get_eye_resolution();
+-	} else if (Cmdline_window_res.has_value()) {
+-		output = std::make_pair(static_cast<int>(Cmdline_window_res->first), static_cast<int>(Cmdline_window_res->second));
++	} else {
++#if defined(__ANDROID__) && defined(WITH_VULKAN)
++		// Android's native surface can differ from the requested SDL window size.
++		if (gr_screen.mode == GraphicsAPI::Vulkan) {
++			if (const auto* renderer = graphics::vulkan::getRendererInstance()) {
++				const auto extent = renderer->getSwapChainExtent();
++				if (extent.width > 0 && extent.height > 0) {
++					output.emplace(extent.width, extent.height);
++				}
++			}
++		}
++#endif
++		if (!output && Cmdline_window_res) {
++			output = Cmdline_window_res;
++		}
+ 	}
+ 	if (!output.has_value()) {
+ 		return 1.0f;
+@@ -1127,9 +1143,9 @@ void gr_screen_layer_end()
+ 	gr_screen.gf_screen_layer_end();
+ }
+ 
+-static int fsr_setting(FsrMode mode, int major_version)
++static int fsr_setting(FsrMode mode, int provider)
+ {
+-	return mode == FsrMode::Off ? 0 : major_version * 10 + static_cast<int>(mode);
++	return mode == FsrMode::Off ? 0 : provider * 10 + static_cast<int>(mode);
+ }
+ 
+ static SCP_vector<int> fsr_setting_enumerator()
+@@ -1138,11 +1154,10 @@ static SCP_vector<int> fsr_setting_enumerator()
+ 
+ 	// Options are also enumerated before gr_init has set up the renderer.
+ 	if (gr_screen.gf_is_capable && gr_is_capable(gr_capability::CAPABILITY_FSR)) {
+-		for (const auto& version : Gr_fsr_versions) {
+-			const int major = atoi(version.c_str());
+-			out.push_back(fsr_setting(FsrMode::AA, major));
++		for (const auto& provider : Gr_upscaler_providers) {
++			out.push_back(fsr_setting(FsrMode::AA, provider.settingId));
+ 			if (output_scale_factor() > 1.0f) {
+-				out.push_back(fsr_setting(FsrMode::Upscale, major));
++				out.push_back(fsr_setting(FsrMode::Upscale, provider.settingId));
+ 			}
+ 		}
+ 	}
+@@ -1158,9 +1173,9 @@ static SCP_string fsr_setting_display(int setting)
+ 	}
+ 
+ 	SCP_string label = "FSR";
+-	for (const auto& name : Gr_fsr_versions) {
+-		if (atoi(name.c_str()) == setting / 10) {
+-			label += " " + name;
++	for (const auto& provider : Gr_upscaler_providers) {
++		if (provider.settingId == setting / 10) {
++			label = provider.label;
+ 			break;
+ 		}
+ 	}
+@@ -1171,7 +1186,7 @@ static void fsr_apply_setting(int setting)
+ {
+ 	const int mode = setting % 10;
+ 	Gr_fsr_mode = mode <= static_cast<int>(FsrMode::Upscale) ? static_cast<FsrMode>(mode) : FsrMode::Off;
+-	Gr_fsr_major_version = setting / 10;
++	Gr_upscaler_provider = setting / 10;
+ }
+ 
+ // -fsr only names a mode, and what of it can run is only known once the renderer is up. Settle it on the closest
+@@ -1212,7 +1227,7 @@ static auto FsrOption __UNUSED = options::OptionBuilder<int>("Graphics.FSR",
+                      .enumerator(fsr_setting_enumerator)
+                      .display(fsr_setting_display)
+                      .flags({options::OptionFlags::ForceMultiValueSelection})
+-                     .default_func([]() { return fsr_setting(Gr_fsr_mode, Gr_fsr_major_version); } )
++                     .default_func([]() { return fsr_setting(Gr_fsr_mode, Gr_upscaler_provider); } )
+                      .change_listener([](const int& setting, bool) {
+                          fsr_apply_setting(setting);
+                          return true;
+diff --git a/code/graphics/2d.h b/code/graphics/2d.h
+index 5533eff388e..6bb6ef2b2dc 100644
+--- a/code/graphics/2d.h
++++ b/code/graphics/2d.h
+@@ -76,10 +76,14 @@ enum class FsrMode {
+ 	Upscale = 2,
+ };
+ extern FsrMode Gr_fsr_mode;
+-// The chosen FSR major version, or 0 for the newest the renderer offers
+-extern int Gr_fsr_major_version;
+-// The FSR versions the renderer offers, newest first, such as "4.1.2". Empty without FSR.
+-extern SCP_vector<SCP_string> Gr_fsr_versions;
++struct TemporalUpscalerProvider {
++	int settingId;
++	SCP_string label;
++};
++// FSR uses its major version as the setting ID. Arm ASR has a separate persistent ID.
++constexpr int ARM_ASR_PROVIDER_SETTING_ID = 100;
++extern int Gr_upscaler_provider;
++extern SCP_vector<TemporalUpscalerProvider> Gr_upscaler_providers;
+ // The largest image side the renderer supports, which limits the output scale factor. 0 until the renderer is up.
+ extern int Gr_max_output_size;
+ 
+diff --git a/code/graphics/vulkan/VulkanPostProcessing.h b/code/graphics/vulkan/VulkanPostProcessing.h
+index 76e357b7ed5..e14e30e6e49 100644
+--- a/code/graphics/vulkan/VulkanPostProcessing.h
++++ b/code/graphics/vulkan/VulkanPostProcessing.h
+@@ -530,7 +530,7 @@ class VulkanUpscaler {
+ 	// The contexts were made for a different version or mode than the one now chosen
+ 	bool settingsChanged() const
+ 	{
+-		return hasContext() && (m_contextMajorVersion != Gr_fsr_major_version || m_contextMode != Gr_fsr_mode);
++		return hasContext() && (m_contextProvider != Gr_upscaler_provider || m_contextMode != Gr_fsr_mode);
+ 	}
+ 	bool createResources();
+ 	bool hasResources() const;
+@@ -562,7 +562,7 @@ class VulkanUpscaler {
+ 
+ 	PostProcessContext* m_ctx = nullptr;
+ 	std::array<View, 2> m_views;
+-	int m_contextMajorVersion = 0;
++	int m_contextProvider = 0;
+ 	FsrMode m_contextMode = FsrMode::Off;
+ 	int m_jitterPhaseCount = 1;
+ };
+diff --git a/code/graphics/vulkan/VulkanUpscaler.cpp b/code/graphics/vulkan/VulkanUpscaler.cpp
+index 4699fdb149a..ff90d6f69f8 100644
+--- a/code/graphics/vulkan/VulkanUpscaler.cpp
++++ b/code/graphics/vulkan/VulkanUpscaler.cpp
+@@ -32,13 +32,13 @@ vk::PhysicalDevice Upscaler_gpu;
+ // The mode and version FSR failed with. Choosing anything else gives it another try.
+ struct failed_setting {
+ 	FsrMode mode;
+-	int majorVersion;
++	int provider;
+ };
+ std::optional<failed_setting> Failed_setting;
+ 
+ bool failed_for_current_setting()
+ {
+-	if (Failed_setting && (Failed_setting->mode != Gr_fsr_mode || Failed_setting->majorVersion != Gr_fsr_major_version)) {
++	if (Failed_setting && (Failed_setting->mode != Gr_fsr_mode || Failed_setting->provider != Gr_upscaler_provider)) {
+ 		Failed_setting.reset();
+ 	}
+ 	return Failed_setting.has_value();
+@@ -46,7 +46,7 @@ bool failed_for_current_setting()
+ 
+ void mark_failed()
+ {
+-	Failed_setting = failed_setting{Gr_fsr_mode, Gr_fsr_major_version};
++	Failed_setting = failed_setting{Gr_fsr_mode, Gr_upscaler_provider};
+ }
+ 
+ struct fsr_version {
+@@ -86,9 +86,9 @@ SCP_vector<fsr_version> query_fsr_versions(vk::Device device)
+ 	return versions;
+ }
+ 
+-int major_version(const SCP_string& name)
++int provider_setting_id(const SCP_string& name)
+ {
+-	return std::atoi(name.c_str());
++	return ffxPortableUsesArmAsr() ? ARM_ASR_PROVIDER_SETTING_ID : std::atoi(name.c_str());
+ }
+ 
+ bool is_offered(int major)
+@@ -100,11 +100,11 @@ bool is_offered(int major)
+ const fsr_version* find_chosen_version(const SCP_vector<fsr_version>& versions)
+ {
+ 	for (const auto& version : versions) {
+-		if (major_version(version.name) == Gr_fsr_major_version) {
++		if (provider_setting_id(version.name) == Gr_upscaler_provider) {
+ 			return &version;
+ 		}
+ 	}
+-	mprintf(("Vulkan: FSR %d isn't available, leaving the version to AMD's selection\n", Gr_fsr_major_version));
++	mprintf(("Vulkan: FSR %d isn't available, using the default version\n", Gr_upscaler_provider));
+ 	return nullptr;
+ }
+ 
+@@ -157,6 +157,11 @@ void vulkan_upscaler_prepare_device(vk::Instance instance,
+ 		VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr,
+ 		&Device_requirements);
+ 
++	if (!Device_requirements.supported) {
++		mprintf(("Vulkan: FSR unavailable: %s\n", ffxPortableLoadError()));
++		return;
++	}
++
+ 	if (VulkanApiVersion < Device_requirements.minApiVersion) {
+ 		mprintf(("Vulkan: FSR unavailable: needs a newer Vulkan API version than the renderer uses\n"));
+ 		return;
+@@ -180,24 +185,33 @@ void vulkan_upscaler_device_created(vk::Device device)
+ 		return;
+ 	}
+ 
+-	Gr_fsr_versions.clear();
++	Gr_upscaler_providers.clear();
+ 	const auto versions = query_fsr_versions(device);
++	if (ffxPortableUsesArmAsr()) {
++		if (versions.empty()) {
++			Upscaler_available = false;
++			return;
++		}
++		Gr_upscaler_providers.push_back({ARM_ASR_PROVIDER_SETTING_ID, versions.front().name});
++		return;
++	}
+ 	for (const auto& version : versions) {
+ 		mprintf(("Vulkan: FSR version available: %s\n", version.name.c_str()));
+-		if (is_offered(major_version(version.name))) {
+-			Gr_fsr_versions.push_back(version.name);
++		const int major = provider_setting_id(version.name);
++		if (is_offered(major)) {
++			Gr_upscaler_providers.push_back({major, "FSR " + version.name});
+ 		}
+ 	}
+ 	// FSR 2 is only the fallback for hardware where neither of the newer versions is available
+-	if (Gr_fsr_versions.empty()) {
++	if (Gr_upscaler_providers.empty()) {
+ 		for (const auto& version : versions) {
+-			if (major_version(version.name) == 2) {
+-				Gr_fsr_versions.push_back(version.name);
++			if (provider_setting_id(version.name) == 2) {
++				Gr_upscaler_providers.push_back({2, "FSR " + version.name});
+ 			}
+ 		}
+ 	}
+-	std::sort(Gr_fsr_versions.begin(), Gr_fsr_versions.end(),
+-		[](const SCP_string& a, const SCP_string& b) { return major_version(a) > major_version(b); });
++	std::sort(Gr_upscaler_providers.begin(), Gr_upscaler_providers.end(),
++		[](const TemporalUpscalerProvider& a, const TemporalUpscalerProvider& b) { return a.settingId > b.settingId; });
+ }
+ 
+ bool vulkan_upscaler_available()
+@@ -269,8 +283,11 @@ bool VulkanUpscaler::createContext(View& view)
+ 		view.output.format = HDR_COLOR_FORMAT;
+ 		view.output.width = w;
+ 		view.output.height = h;
+-		if (!m_ctx->createImage(w, h, HDR_COLOR_FORMAT,
+-		                        vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eColorAttachment,
++		auto usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eColorAttachment;
++		if (!ffxPortableUsesArmAsr()) {
++			usage |= vk::ImageUsageFlagBits::eStorage;
++		}
++		if (!m_ctx->createImage(w, h, HDR_COLOR_FORMAT, usage,
+ 		                        vk::ImageAspectFlagBits::eColor,
+ 		                        view.output.image, view.output.view, view.output.allocation)) {
+ 			mprintf(("Vulkan: FSR disabled: could not create its output image\n"));
+@@ -306,7 +323,7 @@ bool VulkanUpscaler::createContext(View& view)
+ 		chosenVersion.versionId = chosen->id;
+ 		desc.header.pNext = &chosenVersion.header;
+ 	}
+-	m_contextMajorVersion = Gr_fsr_major_version;
++	m_contextProvider = Gr_upscaler_provider;
+ 	m_contextMode = Gr_fsr_mode;
+ 
+ 	const auto result = ffxCreateContext(&view.context, &desc.header, nullptr);
+@@ -380,11 +397,20 @@ bool VulkanUpscaler::dispatch(vk::CommandBuffer cmd, const RenderTarget& color,
+ 	GR_DEBUG_SCOPE("FSR");
+ 
+ 	auto& view = currentView();
++	constexpr bool fragmentOutput = ffxPortableUsesArmAsr();
++	constexpr auto outputLayout = fragmentOutput ? vk::ImageLayout::eColorAttachmentOptimal : vk::ImageLayout::eGeneral;
++	constexpr auto outputStage = fragmentOutput ? vk::PipelineStageFlagBits2::eColorAttachmentOutput
++	                                           : vk::PipelineStageFlagBits2::eComputeShader;
++	constexpr auto outputWrite = fragmentOutput ? vk::AccessFlagBits2::eColorAttachmentWrite
++	                                           : vk::AccessFlagBits2::eShaderWrite;
++	constexpr auto inputStages = fragmentOutput
++		? vk::PipelineStageFlagBits2::eComputeShader | vk::PipelineStageFlagBits2::eFragmentShader
++		: vk::PipelineStageFlags2(vk::PipelineStageFlagBits2::eComputeShader);
+ 
+ 	cmdMemoryBarrier(cmd,
+ 		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+ 		vk::AccessFlagBits2::eColorAttachmentWrite,
+-		vk::PipelineStageFlagBits2::eComputeShader,
++		inputStages,
+ 		vk::AccessFlagBits2::eShaderRead);
+ 
+ 	ImageBarrier2 barrier;
+@@ -392,21 +418,24 @@ bool VulkanUpscaler::dispatch(vk::CommandBuffer cmd, const RenderTarget& color,
+ 	barrier.levelCount = 1;
+ 	barrier.layerCount = 1;
+ 	barrier.oldLayout = vk::ImageLayout::eUndefined;
+-	barrier.newLayout = vk::ImageLayout::eGeneral;
++	barrier.newLayout = outputLayout;
+ 	// Last frame's bloom composited into the output, and tonemapping read it
+ 	barrier.srcStage = vk::PipelineStageFlagBits2::eColorAttachmentOutput | vk::PipelineStageFlagBits2::eFragmentShader;
+ 	barrier.srcAccess = vk::AccessFlagBits2::eColorAttachmentWrite;
+-	barrier.dstStage = vk::PipelineStageFlagBits2::eComputeShader;
+-	barrier.dstAccess = vk::AccessFlagBits2::eShaderWrite;
++	barrier.dstStage = outputStage;
++	barrier.dstAccess = outputWrite;
+ 	cmdImageBarrier(cmd, barrier);
+ 
+ 	ffxDispatchDescUpscale desc{};
+ 	desc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
+ 	desc.commandList = static_cast<VkCommandBuffer>(cmd);
+-	desc.color = ffx_image(color, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+-	desc.depth = ffx_image(depth, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+-	desc.motionVectors = ffx_image(motion, FFX_API_RESOURCE_STATE_COMPUTE_READ);
+-	desc.output = ffx_image(view.output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS, FFX_API_RESOURCE_USAGE_UAV);
++	constexpr auto inputState = fragmentOutput ? FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ : FFX_API_RESOURCE_STATE_COMPUTE_READ;
++	desc.color = ffx_image(color, inputState);
++	desc.depth = ffx_image(depth, inputState);
++	desc.motionVectors = ffx_image(motion, inputState);
++	desc.output = fragmentOutput
++		? ffx_image(view.output, FFX_API_RESOURCE_STATE_RENDER_TARGET, FFX_API_RESOURCE_USAGE_RENDERTARGET)
++		: ffx_image(view.output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS, FFX_API_RESOURCE_USAGE_UAV);
+ 	desc.jitterOffset = {view.jitterX, view.jitterY};
+ 	desc.renderSize = {color.width, color.height};
+ 	desc.upscaleSize = {view.output.width, view.output.height};
+@@ -432,10 +461,10 @@ bool VulkanUpscaler::dispatch(vk::CommandBuffer cmd, const RenderTarget& color,
+ 		mark_failed();
+ 	}
+ 
+-	barrier.oldLayout = vk::ImageLayout::eGeneral;
++	barrier.oldLayout = outputLayout;
+ 	barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+-	barrier.srcStage = vk::PipelineStageFlagBits2::eComputeShader;
+-	barrier.srcAccess = vk::AccessFlagBits2::eShaderWrite;
++	barrier.srcStage = outputStage;
++	barrier.srcAccess = outputWrite;
+ 	barrier.dstStage = vk::PipelineStageFlagBits2::eFragmentShader;
+ 	barrier.dstAccess = vk::AccessFlagBits2::eShaderSampledRead;
+ 	cmdImageBarrier(cmd, barrier);
+diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
+index 7a10f0aded2..d07fce166e4 100644
+--- a/lib/CMakeLists.txt
++++ b/lib/CMakeLists.txt
+@@ -59,8 +59,15 @@ if (FSO_BUILD_WITH_VULKAN AND FSO_BUILD_WITH_FFX)
+ 	if (FFX_RUNTIME_FILES)
+ 		# AMD's license has to ship with its binaries. Nothing else from the SDK is redistributed.
+ 		set(ffx_license "${CMAKE_CURRENT_SOURCE_DIR}/ffx/third_party/amd/Kits/FidelityFX/docs/license.md")
++		set(ffx_license_name amd_ffx.txt)
++	else()
++		get_property(ffx_license GLOBAL PROPERTY FFX_PORTABLE_ARM_ASR_NOTICE)
++		set(ffx_license_name arm-asr.txt)
++	endif()
++	if (ffx_license)
+ 		set_property(GLOBAL PROPERTY FSO_FFX_LICENSE_FILE "${ffx_license}")
+-		install(FILES "${ffx_license}" DESTINATION "${BINARY_DESTINATION}/license" RENAME amd_ffx.txt)
++		set_property(GLOBAL PROPERTY FSO_FFX_LICENSE_NAME "${ffx_license_name}")
++		install(FILES "${ffx_license}" DESTINATION "${BINARY_DESTINATION}/license" RENAME "${ffx_license_name}")
+ 	endif()
+ endif()
+ 
+diff --git a/lib/ffx/CMakeLists.txt b/lib/ffx/CMakeLists.txt
+index ff0ee7bf085..efd06847d57 100644
+--- a/lib/ffx/CMakeLists.txt
++++ b/lib/ffx/CMakeLists.txt
+@@ -1,10 +1,11 @@
+ cmake_minimum_required(VERSION 3.16)
+ project(ffx_portable LANGUAGES CXX)
+ 
+-set(FFX_PORTABLE_BACKEND "AUTO" CACHE STRING "How FSR is provided: AUTO, DYNAMIC (load AMD's library at runtime on Windows), SHIM (load AMD's Windows DLL on Linux) or DIRECT (link AMD's library)")
+-set_property(CACHE FFX_PORTABLE_BACKEND PROPERTY STRINGS AUTO DYNAMIC SHIM DIRECT UNAVAILABLE)
++set(FFX_PORTABLE_BACKEND "AUTO" CACHE STRING "How FSR is provided: AUTO, DYNAMIC (load AMD's library at runtime on Windows), SHIM (load AMD's Windows DLL on Linux), DIRECT (link AMD's library) or ARM_ASR (link Arm ASR on Android)")
++set_property(CACHE FFX_PORTABLE_BACKEND PROPERTY STRINGS AUTO DYNAMIC SHIM DIRECT ARM_ASR UNAVAILABLE)
+ set(FFX_PORTABLE_AMD_LIBRARY "" CACHE FILEPATH "DIRECT: AMD library to link. Empty uses AMD's Windows import library")
+ set(FFX_PORTABLE_AMD_RUNTIME_FILES "" CACHE STRING "DIRECT: runtime files to deploy. Empty uses AMD's Windows DLLs")
++set(FFX_PORTABLE_ARM_ASR_ROOT "" CACHE PATH "ARM_ASR: installed Arm ASR. Empty uses the Android prebuilt package")
+ option(FFX_PORTABLE_BUILD_TESTS "Build the ffx-portable smoke client" OFF)
+ 
+ # Mirrors the root of AMD's SDK, because the file list in AMD's license.md uses paths relative to that root.
+@@ -79,11 +80,25 @@ else()
+ endif()
+ 
+ set(FFX_PORTABLE_SELECTED "${FFX_PORTABLE_BACKEND}")
++set(arm_asr_root "${FFX_PORTABLE_ARM_ASR_ROOT}")
++if(NOT arm_asr_root AND ANDROID AND PREBUILT_PATH)
++    set(arm_asr_root "${PREBUILT_PATH}/arm-asr")
++endif()
++if(ANDROID AND ANDROID_ABI STREQUAL "arm64-v8a" AND arm_asr_root
++    AND EXISTS "${arm_asr_root}/include/host/backends/vk/ffxm_vk.h"
++    AND EXISTS "${arm_asr_root}/include/host/ffxm_fsr2.h"
++    AND EXISTS "${arm_asr_root}/lib/libArm_ASR_api.a"
++    AND EXISTS "${arm_asr_root}/lib/libArm_ASR_backend.a"
++    AND EXISTS "${arm_asr_root}/licenses/arm-asr.txt")
++    set(arm_asr_available ON)
++endif()
+ if(FFX_PORTABLE_SELECTED STREQUAL "AUTO")
+     if(WIN32)
+         set(FFX_PORTABLE_SELECTED DYNAMIC)
+     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND FFX_PORTABLE_X64)
+         set(FFX_PORTABLE_SELECTED SHIM)
++    elseif(arm_asr_available)
++        set(FFX_PORTABLE_SELECTED ARM_ASR)
+     else()
+         set(FFX_PORTABLE_SELECTED UNAVAILABLE)
+     endif()
+@@ -130,6 +145,17 @@ elseif(FFX_PORTABLE_SELECTED STREQUAL "SHIM")
+     target_link_libraries(ffx_portable PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
+     target_compile_definitions(ffx_portable PRIVATE FFX_PORTABLE_UPSCALER_SHA256="${FFX_PORTABLE_UPSCALER_SHA256}")
+     ffx_portable_fetch(amd_fidelityfx_upscaler_vk.dll ${FFX_PORTABLE_UPSCALER_SHA256} FFX_PORTABLE_RUNTIME)
++elseif(FFX_PORTABLE_SELECTED STREQUAL "ARM_ASR")
++    if(NOT arm_asr_available)
++        message(FATAL_ERROR "FFX_PORTABLE_BACKEND=ARM_ASR requires the Arm ASR prebuilt for Android arm64-v8a")
++    endif()
++    add_library(ffx_portable STATIC src/android/arm_asr.cpp)
++    target_include_directories(ffx_portable SYSTEM PRIVATE "${arm_asr_root}/include")
++    target_compile_definitions(ffx_portable PUBLIC FFX_PORTABLE_ARM_ASR=1 PRIVATE VK_NO_PROTOTYPES)
++    target_link_libraries(ffx_portable PRIVATE
++        "${arm_asr_root}/lib/libArm_ASR_api.a"
++        "${arm_asr_root}/lib/libArm_ASR_backend.a")
++    set(FFX_PORTABLE_ARM_ASR_LICENSE "${arm_asr_root}/licenses/arm-asr.txt")
+ elseif(FFX_PORTABLE_SELECTED STREQUAL "UNAVAILABLE")
+     add_library(ffx_portable STATIC src/unavailable.cpp)
+ else()
+@@ -153,9 +179,14 @@ endif()
+ 
+ # Stored globally because the functions below run in the client's CMake scope, not this one.
+ set_property(GLOBAL PROPERTY FFX_PORTABLE_RUNTIME_FILES "${FFX_PORTABLE_RUNTIME}")
+-set_property(GLOBAL PROPERTY FFX_PORTABLE_NOTICE_FILES
+-    ${FFX_PORTABLE_AMD_DIR}/Kits/FidelityFX/docs/license.md
+-    ${FFX_PORTABLE_AMD_DIR}/3rdpartynotice.md)
++set_property(GLOBAL PROPERTY FFX_PORTABLE_ARM_ASR_NOTICE "${FFX_PORTABLE_ARM_ASR_LICENSE}")
++if(FFX_PORTABLE_ARM_ASR_LICENSE)
++    set_property(GLOBAL PROPERTY FFX_PORTABLE_NOTICE_FILES "${FFX_PORTABLE_ARM_ASR_LICENSE}")
++else()
++    set_property(GLOBAL PROPERTY FFX_PORTABLE_NOTICE_FILES
++        ${FFX_PORTABLE_AMD_DIR}/Kits/FidelityFX/docs/license.md
++        ${FFX_PORTABLE_AMD_DIR}/3rdpartynotice.md)
++endif()
+ 
+ # For clients with their own deployment logic. Runtime files belong next to the executable, or in a "lib"
+ # directory beside it or one level up on Linux. Notice files must ship with any redistribution.
+diff --git a/lib/ffx/include/ffx_portable.h b/lib/ffx/include/ffx_portable.h
+index e3a331a43b7..9cc3706c866 100644
+--- a/lib/ffx/include/ffx_portable.h
++++ b/lib/ffx/include/ffx_portable.h
+@@ -27,6 +27,7 @@ extern "C" const char* ffxPortableLoadError();
+ 
+ struct ffxPortableVkRequirements
+ {
++    bool     supported = true;
+     uint32_t minApiVersion;  // The instance and device must be created with at least this version.
+     bool     fp8Capable;     // The device can run the FP8 model, given these requirements are applied.
+     bool     int8Capable;    // The device can run an INT8 model, given these requirements are applied.
+@@ -114,6 +115,13 @@ namespace ffx_portable_detail
+ 
+ // Fills `out` with what FSR needs and this device supports. Call before vkCreateDevice. Takes the
+ // client's loader entry point so that VK_NO_PROTOTYPES clients work.
++#if defined(FFX_PORTABLE_ARM_ASR)
++void ffxPortableVkGetDeviceRequirements(VkInstance instance, VkPhysicalDevice gpu,
++                                       PFN_vkGetInstanceProcAddr getInstanceProcAddr,
++                                       ffxPortableVkRequirements* out);
++inline constexpr bool ffxPortableUsesArmAsr() { return true; }
++#else
++inline constexpr bool ffxPortableUsesArmAsr() { return false; }
+ inline void ffxPortableVkGetDeviceRequirements(VkInstance instance, VkPhysicalDevice gpu, PFN_vkGetInstanceProcAddr getInstanceProcAddr,
+                                                ffxPortableVkRequirements* out)
+ {
+@@ -288,6 +296,8 @@ inline void ffxPortableVkGetDeviceRequirements(VkInstance instance, VkPhysicalDe
+ #endif
+ }
+ 
++#endif
++
+ // Adds the requirements to a device create info, merging with what the client already requests.
+ // Handles both pEnabledFeatures and VkPhysicalDeviceFeatures2, and existing feature structs including
+ // the VulkanXYFeatures aggregates. `requirements` must outlive vkCreateDevice and be applied only once.
+diff --git a/lib/ffx/src/android/arm_asr.cpp b/lib/ffx/src/android/arm_asr.cpp
+new file mode 100644
+index 00000000000..55542e645a5
+--- /dev/null
++++ b/lib/ffx/src/android/arm_asr.cpp
+@@ -0,0 +1,313 @@
++#include "ffx_portable.h"
++
++#include <host/backends/vk/ffxm_vk.h>
++#include <host/ffxm_fsr2.h>
++
++#include <memory>
++#include <new>
++
++namespace {
++
++constexpr uint64_t ProviderId = 1;
++constexpr char ProviderName[] = "Arm ASR 25.06";
++constexpr size_t MaxViews = 2;
++
++VkInstance Instance;
++VkPhysicalDevice PhysicalDevice;
++PFN_vkGetInstanceProcAddr GetInstanceProcAddr;
++const char* UnavailableReason = "the Vulkan device has not been checked";
++
++struct Backend {
++    arm::FfxmInterface interface{};
++    std::unique_ptr<std::byte[]> scratch;
++    size_t views = 0;
++};
++
++// The standalone Arm backend uses one shared interface for its effect contexts.
++Backend SharedBackend;
++ffxApiMessage ClientMessage;
++
++struct Context {
++    arm::FfxmFsr2Context asr;
++    arm::FfxmDimensions2D outputSize;
++};
++
++ffxReturnCode_t translateResult(arm::FfxmErrorCode result)
++{
++    if (result == arm::FFXM_OK)
++        return FFX_API_RETURN_OK;
++    if (result == arm::FFXM_ERROR_OUT_OF_MEMORY || result == arm::FFXM_ERROR_INSUFFICIENT_MEMORY)
++        return FFX_API_RETURN_ERROR_MEMORY;
++    return FFX_API_RETURN_ERROR_RUNTIME_ERROR;
++}
++
++void logAsr(arm::FfxmMsgType type, const wchar_t* message)
++{
++    if (ClientMessage) {
++        ClientMessage(type == arm::FFXM_MESSAGE_TYPE_ERROR ? FFX_API_MESSAGE_TYPE_ERROR : FFX_API_MESSAGE_TYPE_WARNING,
++            message);
++    }
++}
++
++ffxReturnCode_t initBackend(const VkDeviceContext& vk)
++{
++    if (SharedBackend.views)
++        return FFX_API_RETURN_OK;
++
++    arm::VkDeviceContext device{vk.vkDevice, vk.vkPhysicalDevice, vk.vkDeviceProcAddr, Instance, GetInstanceProcAddr};
++    const auto armDevice = arm::ffxmGetDeviceVK(&device);
++    const auto size = arm::ffxmGetScratchMemorySizeVK(vk.vkPhysicalDevice, MaxViews);
++    SharedBackend.scratch.reset(new (std::nothrow) std::byte[size]);
++    if (!SharedBackend.scratch)
++        return FFX_API_RETURN_ERROR_MEMORY;
++
++    const auto result = arm::ffxmGetInterfaceVK(&SharedBackend.interface, armDevice, SharedBackend.scratch.get(),
++        size, MaxViews);
++    if (result != arm::FFXM_OK)
++        SharedBackend = {};
++    return translateResult(result);
++}
++
++arm::FfxmSurfaceFormat surfaceFormat(uint32_t format)
++{
++    switch (format) {
++    case FFX_API_SURFACE_FORMAT_R16G16B16A16_FLOAT: return arm::FFXM_SURFACE_FORMAT_R16G16B16A16_FLOAT;
++    case FFX_API_SURFACE_FORMAT_R16G16_FLOAT: return arm::FFXM_SURFACE_FORMAT_R16G16_FLOAT;
++    case FFX_API_SURFACE_FORMAT_R32_FLOAT: return arm::FFXM_SURFACE_FORMAT_R32_FLOAT;
++    case FFX_API_SURFACE_FORMAT_R16_FLOAT: return arm::FFXM_SURFACE_FORMAT_R16_FLOAT;
++    case FFX_API_SURFACE_FORMAT_R8_UNORM: return arm::FFXM_SURFACE_FORMAT_R8_UNORM;
++    default: return arm::FFXM_SURFACE_FORMAT_UNKNOWN;
++    }
++}
++
++arm::FfxmResource image(const FfxApiResource& resource)
++{
++    if (!resource.resource)
++        return {};
++
++    arm::FfxmResourceDescription desc{};
++    desc.type = arm::FFXM_RESOURCE_TYPE_TEXTURE2D;
++    desc.format = surfaceFormat(resource.description.format);
++    desc.width = resource.description.width;
++    desc.height = resource.description.height;
++    desc.depth = resource.description.depth;
++    desc.mipCount = resource.description.mipCount;
++    const bool output = resource.state == FFX_API_RESOURCE_STATE_RENDER_TARGET;
++    desc.usage = output ? arm::FFXM_RESOURCE_USAGE_RENDERTARGET : arm::FFXM_RESOURCE_USAGE_READ_ONLY;
++    return arm::ffxmGetResourceVK(resource.resource, desc, nullptr,
++        output ? arm::FFXM_RESOURCE_STATE_PIXEL_WRITE : arm::FFXM_RESOURCE_STATE_PIXEL_COMPUTE_READ);
++}
++
++} // namespace
++
++void ffxPortableVkGetDeviceRequirements(VkInstance instance, VkPhysicalDevice gpu,
++                                        PFN_vkGetInstanceProcAddr get, ffxPortableVkRequirements* out)
++{
++    *out = {};
++    out->supported = false;
++    out->minApiVersion = VK_API_VERSION_1_2;
++    UnavailableReason = "missing Vulkan instance functions";
++    const auto getFeatures = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(get(instance, "vkGetPhysicalDeviceFeatures2"));
++    const auto getProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(get(instance, "vkGetPhysicalDeviceProperties2"));
++    if (!getFeatures || !getProperties || !get(instance, "vkGetPhysicalDeviceMemoryProperties")
++        || !get(instance, "vkEnumerateDeviceExtensionProperties"))
++        return;
++
++    using ffx_portable_detail::make;
++    auto float16 = make<VkPhysicalDeviceShaderFloat16Int8Features>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES);
++    auto features = make<VkPhysicalDeviceFeatures2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2);
++    features.pNext = &float16;
++    getFeatures(gpu, &features);
++
++    // The bundled SPIR-V uses Float16, Int16, storage image extended formats,
++    // subgroup quad operations in compute, and storage image atomics in fragment.
++    UnavailableReason = "GPU lacks Arm ASR shader features";
++    if (!float16.shaderFloat16 || !features.features.shaderInt16 || !features.features.fragmentStoresAndAtomics
++        || !features.features.shaderStorageImageExtendedFormats)
++        return;
++
++    auto subgroup = make<VkPhysicalDeviceSubgroupProperties>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES);
++    auto properties = make<VkPhysicalDeviceProperties2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2);
++    properties.pNext = &subgroup;
++    getProperties(gpu, &properties);
++    UnavailableReason = "Arm ASR needs Vulkan 1.2 and compute subgroup quad operations";
++    if (properties.properties.apiVersion < out->minApiVersion
++        || !(subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT)
++        || !(subgroup.supportedOperations & VK_SUBGROUP_FEATURE_QUAD_BIT))
++        return;
++
++    out->float16Int8 = float16;
++    out->float16Int8.shaderInt8 = VK_FALSE;
++    out->core.shaderInt16 = VK_TRUE;
++    out->core.fragmentStoresAndAtomics = VK_TRUE;
++    out->core.shaderStorageImageExtendedFormats = VK_TRUE;
++    out->supported = true;
++    Instance = instance;
++    PhysicalDevice = gpu;
++    GetInstanceProcAddr = get;
++    UnavailableReason = "";
++}
++
++extern "C" {
++
++bool ffxPortableCanLoad() { return true; }
++const char* ffxPortableLoadError() { return UnavailableReason; }
++
++ffxReturnCode_t ffxCreateContext(ffxContext* context, ffxCreateContextDescHeader* header,
++                                const ffxAllocationCallbacks* memCb)
++{
++    if (!context || !header || memCb)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++    if (header->type != FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE)
++        return FFX_API_RETURN_NO_PROVIDER;
++
++    const ffxCreateBackendVKDesc* backend = nullptr;
++    for (auto* node = header->pNext; node; node = node->pNext) {
++        if (node->type == FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK)
++            backend = reinterpret_cast<const ffxCreateBackendVKDesc*>(node);
++    }
++    if (!backend || backend->deviceContext.vkPhysicalDevice != PhysicalDevice
++        || !backend->deviceContext.vkDevice || !backend->deviceContext.vkDeviceProcAddr)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++    if (SharedBackend.views >= MaxViews)
++        return FFX_API_RETURN_ERROR_MEMORY;
++
++    std::unique_ptr<Context> instance(new (std::nothrow) Context);
++    if (!instance)
++        return FFX_API_RETURN_ERROR_MEMORY;
++    const auto init = initBackend(backend->deviceContext);
++    if (init != FFX_API_RETURN_OK)
++        return init;
++
++    const auto& desc = *reinterpret_cast<const ffxCreateContextDescUpscale*>(header);
++    arm::FfxmFsr2ContextDescription asr{};
++    asr.backendInterface = SharedBackend.interface;
++    asr.qualityMode = arm::FFXM_FSR2_SHADER_QUALITY_MODE_PERFORMANCE;
++    // These are the AMD flags whose bit positions match Arm's API.
++    asr.flags = desc.flags & (FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE
++        | FFX_UPSCALE_ENABLE_DEPTH_INVERTED | FFX_UPSCALE_ENABLE_DEPTH_INFINITE
++        | FFX_UPSCALE_ENABLE_DISPLAY_RESOLUTION_MOTION_VECTORS | FFX_UPSCALE_ENABLE_MOTION_VECTORS_JITTER_CANCELLATION
++        | FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION);
++    if (desc.flags & FFX_UPSCALE_ENABLE_DEBUG_CHECKING)
++        asr.flags |= arm::FFXM_FSR2_ENABLE_DEBUG_CHECKING;
++    asr.maxRenderSize = {desc.maxRenderSize.width, desc.maxRenderSize.height};
++    asr.displaySize = {desc.maxUpscaleSize.width, desc.maxUpscaleSize.height};
++    ClientMessage = desc.fpMessage;
++    asr.fpMessage = logAsr;
++
++    const auto result = arm::ffxmFsr2ContextCreate(&instance->asr, &asr);
++    if (result != arm::FFXM_OK) {
++        if (!SharedBackend.views)
++            SharedBackend = {};
++        return translateResult(result);
++    }
++    instance->outputSize = asr.displaySize;
++    ++SharedBackend.views;
++    *context = instance.release();
++    return FFX_API_RETURN_OK;
++}
++
++ffxReturnCode_t ffxDestroyContext(ffxContext* context, const ffxAllocationCallbacks*)
++{
++    if (!context || !*context)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++    std::unique_ptr<Context> instance(static_cast<Context*>(*context));
++    const auto result = arm::ffxmFsr2ContextDestroy(&instance->asr);
++    *context = nullptr;
++    if (--SharedBackend.views == 0)
++        SharedBackend = {};
++    return translateResult(result);
++}
++
++ffxReturnCode_t ffxConfigure(ffxContext*, const ffxConfigureDescHeader*)
++{
++    return FFX_API_RETURN_ERROR_UNKNOWN_DESCTYPE;
++}
++
++ffxReturnCode_t ffxQuery(ffxContext* context, ffxQueryDescHeader* header)
++{
++    if (!header)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++    switch (header->type) {
++    case FFX_API_QUERY_DESC_TYPE_GET_VERSIONS: {
++        auto& query = *reinterpret_cast<ffxQueryDescGetVersions*>(header);
++        const auto* vk = static_cast<const VkDeviceContext*>(query.device);
++        if (query.createDescType != FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE || !vk
++            || vk->vkPhysicalDevice != PhysicalDevice)
++            return FFX_API_RETURN_NO_PROVIDER;
++        if (!query.outputCount)
++            return FFX_API_RETURN_ERROR_PARAMETER;
++        if (*query.outputCount > 0) {
++            if (query.versionIds)
++                query.versionIds[0] = ProviderId;
++            if (query.versionNames)
++                query.versionNames[0] = ProviderName;
++        }
++        *query.outputCount = 1;
++        return FFX_API_RETURN_OK;
++    }
++    case FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION: {
++        if (!context || !*context)
++            return FFX_API_RETURN_ERROR_PARAMETER;
++        auto& query = *reinterpret_cast<ffxQueryGetProviderVersion*>(header);
++        query.versionId = ProviderId;
++        query.versionName = ProviderName;
++        return FFX_API_RETURN_OK;
++    }
++    case FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTERPHASECOUNT: {
++        const auto& query = *reinterpret_cast<const ffxQueryDescUpscaleGetJitterPhaseCount*>(header);
++        if (!query.pOutPhaseCount || !query.renderWidth || !query.displayWidth)
++            return FFX_API_RETURN_ERROR_PARAMETER;
++        *query.pOutPhaseCount = arm::ffxmFsr2GetJitterPhaseCount(query.renderWidth, query.displayWidth);
++        return FFX_API_RETURN_OK;
++    }
++    case FFX_API_QUERY_DESC_TYPE_UPSCALE_GETJITTEROFFSET: {
++        const auto& query = *reinterpret_cast<const ffxQueryDescUpscaleGetJitterOffset*>(header);
++        if (!query.pOutX || !query.pOutY || query.phaseCount <= 0)
++            return FFX_API_RETURN_ERROR_PARAMETER;
++        return translateResult(arm::ffxmFsr2GetJitterOffset(query.pOutX, query.pOutY, query.index, query.phaseCount));
++    }
++    default:
++        return FFX_API_RETURN_ERROR_UNKNOWN_DESCTYPE;
++    }
++}
++
++ffxReturnCode_t ffxDispatch(ffxContext* context, const ffxDispatchDescHeader* header)
++{
++    if (!context || !*context || !header)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++    if (header->type != FFX_API_DISPATCH_DESC_TYPE_UPSCALE)
++        return FFX_API_RETURN_ERROR_UNKNOWN_DESCTYPE;
++
++    auto& instance = *static_cast<Context*>(*context);
++    const auto& desc = *reinterpret_cast<const ffxDispatchDescUpscale*>(header);
++    if (!desc.commandList || desc.flags || desc.output.state != FFX_API_RESOURCE_STATE_RENDER_TARGET
++        || desc.output.description.width != instance.outputSize.width
++        || desc.output.description.height != instance.outputSize.height)
++        return FFX_API_RETURN_ERROR_PARAMETER;
++
++    arm::FfxmFsr2DispatchDescription asr{};
++    asr.commandList = arm::ffxmGetCommandListVK(static_cast<VkCommandBuffer>(desc.commandList));
++    asr.color = image(desc.color);
++    asr.depth = image(desc.depth);
++    asr.motionVectors = image(desc.motionVectors);
++    asr.exposure = image(desc.exposure);
++    asr.reactive = image(desc.reactive);
++    asr.transparencyAndComposition = image(desc.transparencyAndComposition);
++    asr.output = image(desc.output);
++    asr.jitterOffset = {desc.jitterOffset.x, desc.jitterOffset.y};
++    asr.motionVectorScale = {desc.motionVectorScale.x, desc.motionVectorScale.y};
++    asr.renderSize = {desc.renderSize.width, desc.renderSize.height};
++    asr.enableSharpening = desc.enableSharpening;
++    asr.sharpness = desc.sharpness;
++    asr.frameTimeDelta = desc.frameTimeDelta;
++    asr.preExposure = desc.preExposure;
++    asr.reset = desc.reset;
++    asr.cameraNear = desc.cameraNear;
++    asr.cameraFar = desc.cameraFar;
++    asr.cameraFovAngleVertical = desc.cameraFovAngleVertical;
++    asr.viewSpaceToMetersFactor = desc.viewSpaceToMetersFactor;
++    return translateResult(arm::ffxmFsr2ContextDispatch(&instance.asr, &asr));
++}
++
++} // extern "C"
+
+From 7c4f9af6c10515419b7aa6d3422af277c8a3e8e7 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Fri, 27 Nov 2026 00:34:30 -0300
+Subject: [PATCH 2/4] update android prebuilts
+
+---
+ lib/prebuilt.cmake | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/lib/prebuilt.cmake b/lib/prebuilt.cmake
+index 0f53b822685..f005608a98a 100644
+--- a/lib/prebuilt.cmake
++++ b/lib/prebuilt.cmake
+@@ -3,7 +3,7 @@
+ #       without setting Qt6 up project wide
+ 
+ set(PREBUILT_VERSION_NAME "b561f6e8" CACHE INTERNAL "")
+-set(ANDROID_PREBUILT_VERSION_NAME "android-prebuilts-v1" CACHE INTERNAL "")
++set(ANDROID_PREBUILT_VERSION_NAME "android-prebuilts-v2" CACHE INTERNAL "")
+ 
+ set(FSO_PREBUILT_OVERRIDE "" CACHE PATH "Path to the prebuilt binaries, if empty the binaries will be downloaded.")
+ set(PREBUILT_LIB_DIR "${CMAKE_CURRENT_BINARY_DIR}/prebuilt" CACHE INTERNAL "")
+@@ -32,16 +32,16 @@ function(get_prebuilt_path OUT_VAR)
+     elseif(ANDROID)
+         if(ANDROID_ABI STREQUAL "arm64-v8a")
+             set(FILENAME "bin-android-arm64.tar.gz")
+-            set(PREBUILT_SHA256 "d56464fba097c16c6034ae483215045353078c0a339bb1566f0f7e20d063ca52")
++            set(PREBUILT_SHA256 "85f72be5d0dbe7f3c6b023dec9a2ce8682d838230d8c91305d704682f63c01d9")
+         elseif(ANDROID_ABI STREQUAL "x86_64")
+             set(FILENAME "bin-android-x64.tar.gz")
+-            set(PREBUILT_SHA256 "ab030d21200fb3ef799bb08d7a27ae973274a239dd244f51d68304e90a4021d5")
++            set(PREBUILT_SHA256 "a9a7c1d1a6440b662649ea97bfb114e407049445b76dfc8bc0ab0a3c4e51d328")
+         elseif(ANDROID_ABI STREQUAL "armeabi-v7a")
+             set(FILENAME "bin-android-arm32.tar.gz")
+-            set(PREBUILT_SHA256 "8c040685cb4e91cf1e95d106200aa8d852f4f32859e3d1fe6d8e995168b122b6")
++            set(PREBUILT_SHA256 "3ecf71d7ee80c1f8f67a511ffbedeeeae1625482a8538431ec8414bbb93956e2")
+         elseif(ANDROID_ABI STREQUAL "x86")
+             set(FILENAME "bin-android-x86.tar.gz")
+-            set(PREBUILT_SHA256 "020bf41dc8c1d7414c12c050b2e3abc0a701795073ed48b18706b2a89c30e473")
++            set(PREBUILT_SHA256 "8a119e918f9c542d94020c424b1d9de76aac3c0ccc012a88933ac3b0effb6326")
+         else()
+             message(FATAL_ERROR "Unsupported Android ABI for prebuilt libraries: ${ANDROID_ABI}")
+         endif()
+
+From 95a65234db4d65193b305592b77a7d0a1fef9d28 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Fri, 27 Nov 2026 00:44:10 -0300
+Subject: [PATCH 3/4] enable arm asr for x86_64
+
+---
+ lib/ffx/CMakeLists.txt | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/ffx/CMakeLists.txt b/lib/ffx/CMakeLists.txt
+index efd06847d57..d85c2c10a40 100644
+--- a/lib/ffx/CMakeLists.txt
++++ b/lib/ffx/CMakeLists.txt
+@@ -84,7 +84,7 @@ set(arm_asr_root "${FFX_PORTABLE_ARM_ASR_ROOT}")
+ if(NOT arm_asr_root AND ANDROID AND PREBUILT_PATH)
+     set(arm_asr_root "${PREBUILT_PATH}/arm-asr")
+ endif()
+-if(ANDROID AND ANDROID_ABI STREQUAL "arm64-v8a" AND arm_asr_root
++if(ANDROID AND (ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64") AND arm_asr_root
+     AND EXISTS "${arm_asr_root}/include/host/backends/vk/ffxm_vk.h"
+     AND EXISTS "${arm_asr_root}/include/host/ffxm_fsr2.h"
+     AND EXISTS "${arm_asr_root}/lib/libArm_ASR_api.a"
+@@ -147,7 +147,7 @@ elseif(FFX_PORTABLE_SELECTED STREQUAL "SHIM")
+     ffx_portable_fetch(amd_fidelityfx_upscaler_vk.dll ${FFX_PORTABLE_UPSCALER_SHA256} FFX_PORTABLE_RUNTIME)
+ elseif(FFX_PORTABLE_SELECTED STREQUAL "ARM_ASR")
+     if(NOT arm_asr_available)
+-        message(FATAL_ERROR "FFX_PORTABLE_BACKEND=ARM_ASR requires the Arm ASR prebuilt for Android arm64-v8a")
++        message(FATAL_ERROR "FFX_PORTABLE_BACKEND=ARM_ASR requires matching Arm ASR prebuilts for Android arm64-v8a or x86_64")
+     endif()
+     add_library(ffx_portable STATIC src/android/arm_asr.cpp)
+     target_include_directories(ffx_portable SYSTEM PRIVATE "${arm_asr_root}/include")
+
+From cae3b10c7f7f7dee8c9af6d7a37bb999b45beb78 Mon Sep 17 00:00:00 2001
+From: Salvador Cipolla <shivanuo@hotmail.com>
+Date: Fri, 27 Nov 2026 01:12:18 -0300
+Subject: [PATCH 4/4] support 32bit
+
+---
+ code/CMakeLists.txt                     | 11 +++++++----
+ code/graphics/vulkan/VulkanUpscaler.cpp | 22 +++++++++++++++-------
+ lib/ffx/CMakeLists.txt                  |  5 +++--
+ lib/ffx/src/android/arm_asr.cpp         |  7 ++++++-
+ 4 files changed, 31 insertions(+), 14 deletions(-)
+
+diff --git a/code/CMakeLists.txt b/code/CMakeLists.txt
+index cea4f128775..dab3ac9c567 100644
+--- a/code/CMakeLists.txt
++++ b/code/CMakeLists.txt
+@@ -115,10 +115,13 @@ if (FSO_BUILD_WITH_VULKAN)
+ 	target_compile_definitions(code PUBLIC WITH_VULKAN VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1 VK_NO_PROTOTYPES)
+ 	target_include_directories(code PUBLIC Vulkan::Headers)
+ 	target_link_libraries(code PUBLIC VulkanMemoryAllocator)
+-	# AMD only ships 64-bit runtimes, and 32-bit Vulkan handles aren't the pointers its API takes
+-	if (FSO_BUILD_WITH_FFX AND IS_64BIT)
+-		target_compile_definitions(code PRIVATE WITH_FFX)
+-		target_link_libraries(code PRIVATE ffx_portable)
++	if (FSO_BUILD_WITH_FFX)
++		get_target_property(ffx_backend ffx_portable FFX_PORTABLE_SELECTED_BACKEND)
++		# Arm ASR can also use the 64-bit Vulkan handles in 32-bit Android builds.
++		if (IS_64BIT OR ffx_backend STREQUAL "ARM_ASR")
++			target_compile_definitions(code PRIVATE WITH_FFX)
++			target_link_libraries(code PRIVATE ffx_portable)
++		endif()
+ 	endif()
+ endif()
+ 
+diff --git a/code/graphics/vulkan/VulkanUpscaler.cpp b/code/graphics/vulkan/VulkanUpscaler.cpp
+index ff90d6f69f8..9ffc8831059 100644
+--- a/code/graphics/vulkan/VulkanUpscaler.cpp
++++ b/code/graphics/vulkan/VulkanUpscaler.cpp
+@@ -113,7 +113,8 @@ void log_ffx_message(uint32_t type, const wchar_t* message)
+ 	mprintf(("FSR %s: %ls\n", type == FFX_API_MESSAGE_TYPE_ERROR ? "error" : "warning", message));
+ }
+ 
+-FfxApiResource ffx_image(const RenderTarget& target, FfxApiResourceState state, uint32_t usage = FFX_API_RESOURCE_USAGE_READ_ONLY)
++FfxApiResource ffx_image(const RenderTarget& target, VkImage& image, FfxApiResourceState state,
++	uint32_t usage = FFX_API_RESOURCE_USAGE_READ_ONLY)
+ {
+ 	FfxApiResourceDescription description{};
+ 	description.type = FFX_API_RESOURCE_TYPE_TEXTURE2D;
+@@ -123,7 +124,13 @@ FfxApiResource ffx_image(const RenderTarget& target, FfxApiResourceState state,
+ 	description.depth = 1;
+ 	description.mipCount = 1;
+ 	description.usage = usage;
+-	return ffxApiGetResourceVK(static_cast<VkImage>(target.image), description, state);
++	image = static_cast<VkImage>(target.image);
++#if VK_USE_64_BIT_PTR_DEFINES
++	return ffxApiGetResourceVK(image, description, state);
++#else
++	// A VkImage is a 64-bit integer here. Keep it in caller-owned storage through ffxDispatch.
++	return ffxApiGetResourceVK(image != VK_NULL_HANDLE ? &image : nullptr, description, state);
++#endif
+ }
+ 
+ } // namespace
+@@ -429,13 +436,14 @@ bool VulkanUpscaler::dispatch(vk::CommandBuffer cmd, const RenderTarget& color,
+ 	ffxDispatchDescUpscale desc{};
+ 	desc.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
+ 	desc.commandList = static_cast<VkCommandBuffer>(cmd);
++	VkImage colorImage, depthImage, motionImage, outputImage;
+ 	constexpr auto inputState = fragmentOutput ? FFX_API_RESOURCE_STATE_PIXEL_COMPUTE_READ : FFX_API_RESOURCE_STATE_COMPUTE_READ;
+-	desc.color = ffx_image(color, inputState);
+-	desc.depth = ffx_image(depth, inputState);
+-	desc.motionVectors = ffx_image(motion, inputState);
++	desc.color = ffx_image(color, colorImage, inputState);
++	desc.depth = ffx_image(depth, depthImage, inputState);
++	desc.motionVectors = ffx_image(motion, motionImage, inputState);
+ 	desc.output = fragmentOutput
+-		? ffx_image(view.output, FFX_API_RESOURCE_STATE_RENDER_TARGET, FFX_API_RESOURCE_USAGE_RENDERTARGET)
+-		: ffx_image(view.output, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS, FFX_API_RESOURCE_USAGE_UAV);
++		? ffx_image(view.output, outputImage, FFX_API_RESOURCE_STATE_RENDER_TARGET, FFX_API_RESOURCE_USAGE_RENDERTARGET)
++		: ffx_image(view.output, outputImage, FFX_API_RESOURCE_STATE_UNORDERED_ACCESS, FFX_API_RESOURCE_USAGE_UAV);
+ 	desc.jitterOffset = {view.jitterX, view.jitterY};
+ 	desc.renderSize = {color.width, color.height};
+ 	desc.upscaleSize = {view.output.width, view.output.height};
+diff --git a/lib/ffx/CMakeLists.txt b/lib/ffx/CMakeLists.txt
+index d85c2c10a40..f5b00ea24a8 100644
+--- a/lib/ffx/CMakeLists.txt
++++ b/lib/ffx/CMakeLists.txt
+@@ -84,7 +84,7 @@ set(arm_asr_root "${FFX_PORTABLE_ARM_ASR_ROOT}")
+ if(NOT arm_asr_root AND ANDROID AND PREBUILT_PATH)
+     set(arm_asr_root "${PREBUILT_PATH}/arm-asr")
+ endif()
+-if(ANDROID AND (ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64") AND arm_asr_root
++if(ANDROID AND arm_asr_root
+     AND EXISTS "${arm_asr_root}/include/host/backends/vk/ffxm_vk.h"
+     AND EXISTS "${arm_asr_root}/include/host/ffxm_fsr2.h"
+     AND EXISTS "${arm_asr_root}/lib/libArm_ASR_api.a"
+@@ -147,7 +147,7 @@ elseif(FFX_PORTABLE_SELECTED STREQUAL "SHIM")
+     ffx_portable_fetch(amd_fidelityfx_upscaler_vk.dll ${FFX_PORTABLE_UPSCALER_SHA256} FFX_PORTABLE_RUNTIME)
+ elseif(FFX_PORTABLE_SELECTED STREQUAL "ARM_ASR")
+     if(NOT arm_asr_available)
+-        message(FATAL_ERROR "FFX_PORTABLE_BACKEND=ARM_ASR requires matching Arm ASR prebuilts for Android arm64-v8a or x86_64")
++        message(FATAL_ERROR "FFX_PORTABLE_BACKEND=ARM_ASR requires matching Arm ASR prebuilts for the selected Android ABI")
+     endif()
+     add_library(ffx_portable STATIC src/android/arm_asr.cpp)
+     target_include_directories(ffx_portable SYSTEM PRIVATE "${arm_asr_root}/include")
+@@ -163,6 +163,7 @@ else()
+ endif()
+ 
+ message(STATUS "ffx-portable backend: ${FFX_PORTABLE_SELECTED}")
++set_property(TARGET ffx_portable PROPERTY FFX_PORTABLE_SELECTED_BACKEND "${FFX_PORTABLE_SELECTED}")
+ 
+ if(NOT FFX_PORTABLE_SELECTED STREQUAL "DIRECT")
+     target_include_directories(ffx_portable PUBLIC ${FFX_PORTABLE_INCLUDES})
+diff --git a/lib/ffx/src/android/arm_asr.cpp b/lib/ffx/src/android/arm_asr.cpp
+index 55542e645a5..b9032df5d7e 100644
+--- a/lib/ffx/src/android/arm_asr.cpp
++++ b/lib/ffx/src/android/arm_asr.cpp
+@@ -94,7 +94,12 @@ arm::FfxmResource image(const FfxApiResource& resource)
+     desc.mipCount = resource.description.mipCount;
+     const bool output = resource.state == FFX_API_RESOURCE_STATE_RENDER_TARGET;
+     desc.usage = output ? arm::FFXM_RESOURCE_USAGE_RENDERTARGET : arm::FFXM_RESOURCE_USAGE_READ_ONLY;
+-    return arm::ffxmGetResourceVK(resource.resource, desc, nullptr,
++#if VK_USE_64_BIT_PTR_DEFINES
++    const auto handle = resource.resource;
++#else
++    const auto handle = *static_cast<const VkImage*>(resource.resource);
++#endif
++    return arm::ffxmGetResourceVK(handle, desc, nullptr,
+         output ? arm::FFXM_RESOURCE_STATE_PIXEL_WRITE : arm::FFXM_RESOURCE_STATE_PIXEL_COMPUTE_READ);
+ }
+ 
