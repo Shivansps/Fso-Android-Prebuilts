@@ -82,7 +82,6 @@ WORKDIR /work
 
 # Bring the build script into the image.
 COPY build_libs.sh /work/build_libs.sh
-COPY arm-asr /work/arm-asr
 RUN chmod +x /work/build_libs.sh
 
 # The script writes everything under $SCRIPT_DIR/prebuilt_android (i.e. /work/prebuilt_android).
