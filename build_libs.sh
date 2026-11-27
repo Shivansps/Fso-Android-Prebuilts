@@ -253,6 +253,9 @@ for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
 	cp -r Vulkan-Headers/include "$TARGET_PREBUILT_FOLDER/$ABI/vulkan-headers/"
 done
 
+# Arm ASR
+sh "$SCRIPT_DIR/arm-asr/build.sh" "$TEMP_FOLDER" "$TARGET_PREBUILT_FOLDER" || exit $?
+
 # FFMPEG
 git clone https://github.com/Javernaut/ffmpeg-android-maker
 cd ffmpeg-android-maker
