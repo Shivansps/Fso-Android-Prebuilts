@@ -382,9 +382,9 @@ rm -rf $TARGET_PREBUILT_FOLDER/x86_64/sdl2/lib/cmake
 rm $TARGET_PREBUILT_FOLDER/x86_64/sdl2/lib/libSDL2main.a
 cd ..
 
-# SDL 3
-git clone https://github.com/libsdl-org/SDL SDL3
-cd SDL3 && git checkout release-3.4.x && cd ..
+# SDL 3.4.13 (development snapshot)
+git clone https://github.com/libsdl-org/SDL SDL3 || exit $?
+git -C SDL3 checkout --detach 932f36590f44f7774344de8636f0e43c2ef69aba || exit $?
 
 mkdir -p $TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
 cmake cmake -S SDL3 -B sdl3-android1  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI="arm64-v8a" -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST=OFF -DSDL_AUDIO=ON -DSDL_VIDEO=ON -DSDL_RENDER=ON -DCMAKE_INSTALL_PREFIX=$TARGET_PREBUILT_FOLDER/arm64-v8a/sdl3
